@@ -1,0 +1,11 @@
+base:
+  random_seed: 42
+
+data:
+  cosmetic_shop: 'data/raw/cosmetic-shop-ecommerce-events/'
+
+training:
+  # training hyperparams
+
+reports:
+  # metrics, images, etc.
