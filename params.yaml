@@ -5,7 +5,7 @@ data:
   cosmetic_shop: 'data/raw/cosmetic-shop-ecommerce-events/'
 
 training:
-  # training hyperparams
+  event_type_weights: {"view": 0.01, "cart": 0.1, "remove_from_cart": -0.09, "purchase": 1.0}
 
 reports:
   # metrics, images, etc.
