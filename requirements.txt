@@ -5,3 +5,6 @@ PyYAML==6.0
 scikit-surprise
 matplotlib
 jupyter
+torch
+torch_geometric
+sklearn
