@@ -10,3 +10,5 @@ torch_geometric
 torch_sparse
 torch_scatter
 sklearn
+numpy
+pandas_profiling
