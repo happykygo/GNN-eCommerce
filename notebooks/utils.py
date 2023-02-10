@@ -18,6 +18,7 @@ def purchase_users(df):
 def sync_nodes(train_df, val_df, test_df):
     r"""
     Remove user/items in val_df/test_df but not in train_df
+    Remove users with NO purchase in val_df/test_df
     :param train_df:
     :param val_df:
     :param test_df:
@@ -61,7 +62,7 @@ def relabelling(train_df, val_df, test_df):
     return n_users, n_items, train_df, val_df, test_df
 
 
-def interact_matrix(train_df, n_users, n_items, device):
+# def interact_matrix(train_df, n_users, n_items):
     r"""
     create dense tensor of all user-item interactions
     :param device:
@@ -70,36 +71,55 @@ def interact_matrix(train_df, n_users, n_items, device):
     :param n_items:
     :return:
     """
-    i = torch.stack((
-        torch.LongTensor(train_df['user_id_idx'].values),
-        torch.LongTensor(train_df['item_id_idx'].values)
-    ))
-    v = torch.ones((len(train_df)), dtype=torch.float64)
-    interactions_t = torch.sparse.FloatTensor(i, v, (n_users, n_items)).to_dense().to(device)
-    return interactions_t
+    # i = torch.stack((
+    #     torch.LongTensor(train_df['user_id_idx'].values),
+    #     torch.LongTensor(train_df['item_id_idx'].values)
+    # ))
+    # v = torch.ones((len(train_df)), dtype=torch.float64)
+    # interactions_t = torch.sparse.FloatTensor(i, v, (n_users, n_items)).to_dense()
+    # return interactions_t
 
 
-def pos_item_list(train_df, train):
+def pos_item_list(df):      # , train
     r"""
     Generate Positive Item List
-    :param train: if true, for train set -- multiple user-item pair may have same pos_item_list;
-                  else for test/ val set -- one user with related pos_item_list
-    :param train_df:
+    :param train: true for train_df
+            For train set -- multiple user-item pair may have same pos_item_list,
+                            including users with 0.1 weight
+            For test/ val set -- only user with 1.0 weight, and one user per line
+    :param df:
     :return:
     """
-    u_i = pd.DataFrame(train_df, columns=['user_id_idx', 'item_id_idx', 'weight'])
-    u_posI_List = train_df.loc[train_df['weight'] == 1]
+    u_posI_List = df.loc[df['weight'] == 1]
     u_posI_List = u_posI_List.groupby('user_id_idx')['item_id_idx'].apply(list).reset_index()
     u_posI_List.columns = ['user_id_idx', 'item_id_idx_list']
-    if train:
-        u_posI_List = pd.merge(u_posI_List, u_i, how='right', left_on='user_id_idx', right_on='user_id_idx')
-
+    # if train:
+    #     u_posI_List = pd.merge(u_posI_List, df, how='right', left_on='user_id_idx', right_on='user_id_idx')
     return u_posI_List
 
 
-def prepare_val_test(train_df, val_df, test_df, device):
-    r"""Relabelling user/ item nodes.
-        Remove user/items in val_df/test_df but not in train_df
+def ignor_neg_item_list(train_pos_list_df, val_pos_list_df, test_pos_list_df, n_users):
+    v = pd.merge(val_pos_list_df, test_pos_list_df, how='outer', left_on='user_id_idx', right_on='user_id_idx')
+    train_pos_list_df = pd.merge(train_pos_list_df, v, how='left', left_on='user_id_idx', right_on='user_id_idx')
+    train_pos_list_df.item_id_idx_list = train_pos_list_df.item_id_idx_list.fillna('').apply(list)
+    train_pos_list_df.item_id_idx_list_x = train_pos_list_df.item_id_idx_list_x.fillna('').apply(list)
+    train_pos_list_df.item_id_idx_list_x = train_pos_list_df.item_id_idx_list_x.apply(lambda x: np.array(x) + n_users)
+    train_pos_list_df.item_id_idx_list_y = train_pos_list_df.item_id_idx_list_y.fillna('').apply(list)
+    train_pos_list_df.item_id_idx_list_y = train_pos_list_df.item_id_idx_list_y.apply(lambda x: np.array(x) + n_users)
+
+    train_pos_list_df['ignor_neg_list'] = [list((set(a).union(b).union(c))) for a, b, c in
+                                           zip(train_pos_list_df.item_id_idx_list, train_pos_list_df.item_id_idx_list_x, train_pos_list_df.item_id_idx_list_y)]
+    train_pos_list_df = train_pos_list_df[['user_id_idx', 'item_id_idx_list', 'ignor_neg_list']]
+
+    return train_pos_list_df
+
+def prepare_val_test(train_df, val_df, test_df):
+    r"""
+    Sync nodes
+    Relabelling user/ item nodes in 3 set.
+    Unique identify user, item nodes in train set
+    Add pos_item_list to 3 set.
+    Add ignor_neg_list to train
 
     Args:
         train_df/ val_df/ test_df (Tensor): Raw train_df/ val_df/ test_df
@@ -113,19 +133,22 @@ def prepare_val_test(train_df, val_df, test_df, device):
     val_df, test_df = sync_nodes(train_df, val_df, test_df)
     n_users, n_items, train_df, val_df, test_df = relabelling(train_df, val_df, test_df)
 
-    i_m = interact_matrix(train_df, n_users, n_items, device)
-    val_df_users = val_df['user_id_idx'].unique()
-    test_df_users = test_df['user_id_idx'].unique()
-    val_u_i_matrix = i_m[val_df_users]
-    test_u_i_matrix = i_m[test_df_users]
+    # i_m = interact_matrix(train_df, n_users, n_items)
+    # val_df_users = val_df['user_id_idx'].unique()
+    # test_df_users = test_df['user_id_idx'].unique()
+    # val_u_i_matrix = i_m[val_df_users]
+    # test_u_i_matrix = i_m[test_df_users]
 
     train_df['item_id_idx'] = train_df['item_id_idx'] + n_users
 
-    train_df = pos_item_list(train_df, True)
-    val_pos_list_df = pos_item_list(val_df, False)
-    test_pos_list_df = pos_item_list(test_df, False)
+    # train_df = pos_item_list(train_df, True)
+    train_pos_list_df = pos_item_list(train_df)
+    val_pos_list_df = pos_item_list(val_df)
+    test_pos_list_df = pos_item_list(test_df)
 
-    return n_users, n_items, train_df, val_pos_list_df, test_pos_list_df, val_u_i_matrix, test_u_i_matrix
+    train_pos_list_df = ignor_neg_item_list(train_pos_list_df, val_pos_list_df, test_pos_list_df, n_users)
+
+    return n_users, n_items, train_df, train_pos_list_df, val_pos_list_df, test_pos_list_df  # , val_u_i_matrix, test_u_i_matrix
 
 
 def df_to_graph(train_df, weight):
@@ -164,9 +187,9 @@ def sample_neg(x, n_neg, n_users, n_itm):
 
     neg_list = set()
     while len(neg_list) < n_neg:
-        neg_id = random.randint(0, n_itm - 1)
+        neg_id = random.randint(0, n_itm - 1)+n_users
         if neg_id not in x:
-            neg_list.add(neg_id+n_users)
+            neg_list.add(neg_id)
     return list(neg_list)
 
 
@@ -176,7 +199,7 @@ def sample_pos(x, n_neg):
     return (x * ceil(n_neg/len(x)))[:n_neg]
 
 
-def pos_neg_edge_index(train_df, n_neg, n_users, n_itm):
+def pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_itm):
     r"""Generate random neg_item for each (usr, pos_item) pair
     example: if n_neg=3
     train_df as below:
@@ -195,7 +218,7 @@ def pos_neg_edge_index(train_df, n_neg, n_users, n_itm):
 
     Args:
         :param n_neg:
-        :param train_df: (Tensor)
+        :param train_pos_list_df: (Tensor)
         :param n_users: number of users
         :param n_itm: number of items
 
@@ -204,13 +227,13 @@ def pos_neg_edge_index(train_df, n_neg, n_users, n_itm):
 
     """
 
-    train_df = train_df.loc[train_df['weight'] == 1].drop_duplicates('user_id_idx')
+    # train_pos_list_df = train_pos_list_df.loc[train_pos_list_df['weight'] == 1].drop_duplicates('user_id_idx')
     # users = torch.LongTensor(train_df['user_id_idx'].values)
-    users = torch.LongTensor(list(np.repeat(train_df['user_id_idx'], n_neg)))
+    users = torch.LongTensor(list(np.repeat(train_pos_list_df['user_id_idx'], n_neg)))
     # pos_items = torch.LongTensor(train_df['item_id_idx'].values)
-    pos_items = torch.LongTensor(train_df['item_id_idx_list'].apply(
+    pos_items = torch.LongTensor(train_pos_list_df['item_id_idx_list'].apply(
         lambda x: sample_pos(x, n_neg)).tolist()).reshape([-1])
-    neg_items = torch.LongTensor(train_df['item_id_idx_list'].apply(
+    neg_items = torch.LongTensor(train_pos_list_df['ignor_neg_list'].apply(
         lambda x: sample_neg(x, n_neg, n_users, n_itm)).tolist()).reshape([-1])
 
     return users, pos_items, neg_items
@@ -251,12 +274,12 @@ def regularization_loss(init_embed, batch_size, batch_usr, batch_pos, batch_neg,
     return reg_loss * DECAY
 
 
-def train_loop(train_df, n_users, n_items, n_neg, edge_index, edge_weight, model, optimizer, BATCH_SIZE):
+def train_loop(train_pos_list_df, n_users, n_items, n_neg, edge_index, edge_weight, model, optimizer, BATCH_SIZE):
     bpr_loss_batch_list = []
     reg_loss_batch_list = []
     final_loss_batch_list = []
 
-    users, pos_items, neg_items = pos_neg_edge_index(train_df, n_neg, n_users, n_items)
+    users, pos_items, neg_items = pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_items)
 
     idx = list(range(len(users)))
     random.shuffle(idx)
@@ -292,11 +315,11 @@ def train_loop(train_df, n_users, n_items, n_neg, edge_index, edge_weight, model
     return bpr_loss, reg_loss, final_loss
 
 
-def get_metrics(user_Embed_wts, item_Embed_wts, test_u_i_matrix, test_pos_list_df, K):
+def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, K):
+    # test_u_i_matrix,
     r"""
     Compute Precision@K, Recall@K
-    :param test_u_i_matrix:
-    :param u_i_matrix:
+    # :param test_u_i_matrix:
     :param user_Embed_wts:
     :param item_Embed_wts:
     :param test_pos_list_df:
@@ -305,18 +328,18 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_u_i_matrix, test_pos_list_d
     """
 
     # compute the score of aim_user-item pairs
-    test_df_users = test_pos_list_df['user_id_idx']
-    user_Embed_wts = user_Embed_wts[test_df_users]
+    # test_df_users = test_pos_list_df['user_id_idx']
+    # user_Embed_wts = user_Embed_wts[test_df_users]
     relevance_score = user_Embed_wts @ item_Embed_wts.t()
 
     # mask out training user-item interactions from metric computation
-    relevance_score = torch.mul(relevance_score, (1 - test_u_i_matrix))
+    # relevance_score = torch.mul(relevance_score, (1 - test_u_i_matrix))
 
     # compute top scoring items for each user
     topk_relevance_indices = torch.topk(relevance_score, K).indices
     topk_relevance_indices_df = pd.DataFrame(topk_relevance_indices.cpu().numpy())
     topk_relevance_indices_df['top_rlvnt_itm'] = topk_relevance_indices_df.values.tolist()
-    topk_relevance_indices_df['user_ID'] = test_df_users  # topk_relevance_indices_df.index
+    topk_relevance_indices_df['user_ID'] = topk_relevance_indices_df.index  # test_df_users
     topk_relevance_indices_df = topk_relevance_indices_df[['user_ID', 'top_rlvnt_itm']]
 
     # measure overlap between recommended (top-K) and held-out user-item interactions
@@ -332,13 +355,13 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_u_i_matrix, test_pos_list_d
     return metrics_df['recall'].mean(), metrics_df['precision'].mean()
 
 
-def evaluation(model, n_users, n_items, edge_index, edge_weight, test_u_i_matrix, test_pos_list_df, K):
+def evaluation(model, n_users, n_items, edge_index, edge_weight, test_pos_list_df, K):  # test_u_i_matrix,
     model.eval()
     with torch.no_grad():
         embeds = model.get_embedding(edge_index, edge_weight)
         final_usr_embed, final_item_embed = torch.split(embeds, (n_users, n_items))
         test_topK_recall, test_topK_precision = \
-            get_metrics(final_usr_embed, final_item_embed, test_u_i_matrix, test_pos_list_df, K)
+            get_metrics(final_usr_embed, final_item_embed, test_pos_list_df, K)  # test_u_i_matrix,
 
     precision = round(test_topK_precision, 4)
     recall = round(test_topK_recall, 4)
