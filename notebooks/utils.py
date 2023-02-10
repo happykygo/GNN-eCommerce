@@ -1,6 +1,9 @@
+from math import ceil
+
 from sklearn import preprocessing as pp
 import torch
 import random
+from random import sample
 import pandas as pd
 import numpy as np
 from torch.utils.data import DataLoader
@@ -150,19 +153,48 @@ def df_to_graph(train_df, weight):
 
 
 def sample_neg(x, n_neg, n_users, n_itm):
+    """
+    Need to add logic
+    :param x:
+    :param n_neg:
+    :param n_users:
+    :param n_itm:
+    :return:
+    """
+
     neg_list = set()
     while len(neg_list) < n_neg:
         neg_id = random.randint(0, n_itm - 1)
         if neg_id not in x:
             neg_list.add(neg_id+n_users)
-    return list(neg_id)
+    return list(neg_list)
+
+
+def sample_pos(x, n_neg):
+    if n_neg <= len(x):
+        return sample(x, n_neg)
+    return (x * ceil(n_neg/len(x)))[:n_neg]
 
 
 def pos_neg_edge_index(train_df, n_neg, n_users, n_itm):
     r"""Generate random neg_item for each (usr, pos_item) pair
+    example: if n_neg=3
+    train_df as below:
+    user    pos_list
+    u1      [1,2,3]
+    u2      [7,8]
+
+    Output should be(pos, neg item ids are + n_users):
+    user    pos     neg
+    u1      1       11
+    u1      2       16
+    u1      3       77
+    u2      7       4
+    u2      8       9
+    u2      7       10
+
     Args:
         :param n_neg:
-        :param train_pos_list_df:
         :param train_df: (Tensor)
         :param n_users: number of users
         :param n_itm: number of items
@@ -172,11 +204,14 @@ def pos_neg_edge_index(train_df, n_neg, n_users, n_itm):
 
     """
 
-    train_df = train_df.loc[train_df['weight'] == 1]
-    users = torch.LongTensor(train_df['user_id_idx'].values)
-    pos_items = torch.LongTensor(train_df['item_id_idx'].values)
+    train_df = train_df.loc[train_df['weight'] == 1].drop_duplicates('user_id_idx')
+    # users = torch.LongTensor(train_df['user_id_idx'].values)
+    users = torch.LongTensor(list(np.repeat(train_df['user_id_idx'], n_neg)))
+    # pos_items = torch.LongTensor(train_df['item_id_idx'].values)
+    pos_items = torch.LongTensor(train_df['item_id_idx_list'].apply(
+        lambda x: sample_pos(x, n_neg)).tolist()).reshape([-1])
     neg_items = torch.LongTensor(train_df['item_id_idx_list'].apply(
-        lambda x: sample_neg(x, n_neg, n_users, n_itm)).values)
+        lambda x: sample_neg(x, n_neg, n_users, n_itm)).tolist()).reshape([-1])
 
     return users, pos_items, neg_items
 
@@ -216,12 +251,12 @@ def regularization_loss(init_embed, batch_size, batch_usr, batch_pos, batch_neg,
     return reg_loss * DECAY
 
 
-def train_loop(train_df, n_users, n_items, edge_index, edge_weight, model, optimizer, BATCH_SIZE):
+def train_loop(train_df, n_users, n_items, n_neg, edge_index, edge_weight, model, optimizer, BATCH_SIZE):
     bpr_loss_batch_list = []
     reg_loss_batch_list = []
     final_loss_batch_list = []
 
-    users, pos_items, neg_items = pos_neg_edge_index(train_df, n_users, n_items)
+    users, pos_items, neg_items = pos_neg_edge_index(train_df, n_neg, n_users, n_items)
 
     idx = list(range(len(users)))
     random.shuffle(idx)
@@ -287,7 +322,7 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_u_i_matrix, test_pos_list_d
     # measure overlap between recommended (top-K) and held-out user-item interactions
     # test_interacted_items = test_pos_list_df.groupby('user_id_idx')['item_id_idx'].apply(list).reset_index()
     metrics_df = pd.merge(test_pos_list_df, topk_relevance_indices_df,
-                          how='left', left_on='user_id_idx', right_on=['user_ID'])
+                          how='left', left_on='user_id_idx', right_on='user_ID')
     metrics_df['intrsctn_itm'] = [list(set(a).intersection(b)) for a, b in
                                   zip(metrics_df.item_id_idx, metrics_df.top_rlvnt_itm)]  # TP
 
