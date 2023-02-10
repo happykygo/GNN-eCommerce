@@ -305,7 +305,7 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_u_i_matrix, test_pos_list_d
     """
 
     # compute the score of aim_user-item pairs
-    test_df_users = test_pos_list_df['user_id_idx'].unique()
+    test_df_users = test_pos_list_df['user_id_idx']
     user_Embed_wts = user_Embed_wts[test_df_users]
     relevance_score = user_Embed_wts @ item_Embed_wts.t()
 
@@ -316,7 +316,7 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_u_i_matrix, test_pos_list_d
     topk_relevance_indices = torch.topk(relevance_score, K).indices
     topk_relevance_indices_df = pd.DataFrame(topk_relevance_indices.cpu().numpy())
     topk_relevance_indices_df['top_rlvnt_itm'] = topk_relevance_indices_df.values.tolist()
-    topk_relevance_indices_df['user_ID'] = topk_relevance_indices_df.index
+    topk_relevance_indices_df['user_ID'] = test_df_users  # topk_relevance_indices_df.index
     topk_relevance_indices_df = topk_relevance_indices_df[['user_ID', 'top_rlvnt_itm']]
 
     # measure overlap between recommended (top-K) and held-out user-item interactions
@@ -324,9 +324,9 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_u_i_matrix, test_pos_list_d
     metrics_df = pd.merge(test_pos_list_df, topk_relevance_indices_df,
                           how='left', left_on='user_id_idx', right_on='user_ID')
     metrics_df['intrsctn_itm'] = [list(set(a).intersection(b)) for a, b in
-                                  zip(metrics_df.item_id_idx, metrics_df.top_rlvnt_itm)]  # TP
+                                  zip(metrics_df.item_id_idx_list, metrics_df.top_rlvnt_itm)]  # TP
 
-    metrics_df['recall'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / len(x['item_id_idx']), axis=1)
+    metrics_df['recall'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / len(x['item_id_idx_list']), axis=1)
     metrics_df['precision'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / K, axis=1)
 
     return metrics_df['recall'].mean(), metrics_df['precision'].mean()
