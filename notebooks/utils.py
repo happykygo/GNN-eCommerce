@@ -59,18 +59,18 @@ def relabelling(train_df, val_df, test_df):
 
     n_users = train_df['user_id_idx'].nunique()
     n_items = train_df['item_id_idx'].nunique()
-
     return n_users, n_items, train_df, val_df, test_df
 
+
     # def interact_matrix(train_df, n_users, n_items):
-    r"""
-    create dense tensor of all user-item interactions
-    :param device:
-    :param train_df: with 'user_id_idx' and 'item_id_idx'
-    :param n_users:
-    :param n_items:
-    :return:
-    """
+    # r"""
+    # create dense tensor of all user-item interactions
+    # :param device:
+    # :param train_df: with 'user_id_idx' and 'item_id_idx'
+    # :param n_users:
+    # :param n_items:
+    # :return:
+    # """
     # i = torch.stack((
     #     torch.LongTensor(train_df['user_id_idx'].values),
     #     torch.LongTensor(train_df['item_id_idx'].values)
@@ -80,13 +80,9 @@ def relabelling(train_df, val_df, test_df):
     # return interactions_t
 
 
-def pos_item_list(df):  # , train
+def pos_item_list(df):
     r"""
-    Generate Positive Item List
-    :param train: true for train_df
-            For train set -- multiple user-item pair may have same pos_item_list,
-                            including users with 0.1 weight
-            For test/ val set -- only user with 1.0 weight, and one user per line
+    Generate Positive Item List for df
     :param df:
     :return:
     """
@@ -100,17 +96,16 @@ def pos_item_list(df):  # , train
 
 def ignor_neg_item_list(train_pos_list_df, val_pos_list_df, test_pos_list_df, n_users):
     v = pd.merge(val_pos_list_df, test_pos_list_df, how='outer', left_on='user_id_idx', right_on='user_id_idx')
-    train_pos_list_df = pd.merge(train_pos_list_df, v, how='left', left_on='user_id_idx', right_on='user_id_idx')
-    train_pos_list_df.item_id_idx_list = train_pos_list_df.item_id_idx_list.fillna('').apply(list)
-    train_pos_list_df.item_id_idx_list_x = train_pos_list_df.item_id_idx_list_x.fillna('').apply(list)
-    train_pos_list_df.item_id_idx_list_x = train_pos_list_df.item_id_idx_list_x.apply(lambda x: np.array(x) + n_users)
-    train_pos_list_df.item_id_idx_list_y = train_pos_list_df.item_id_idx_list_y.fillna('').apply(list)
-    train_pos_list_df.item_id_idx_list_y = train_pos_list_df.item_id_idx_list_y.apply(lambda x: np.array(x) + n_users)
+    t = pd.merge(train_pos_list_df, v, how='left', left_on='user_id_idx', right_on='user_id_idx')
+    t.item_id_idx_list = t.item_id_idx_list.fillna('').apply(list)
+    t.item_id_idx_list_x = t.item_id_idx_list_x.fillna('').apply(list)
+    t.item_id_idx_list_x = t.item_id_idx_list_x.apply(lambda x: np.array(x) + n_users)
+    t.item_id_idx_list_y = t.item_id_idx_list_y.fillna('').apply(list)
+    t.item_id_idx_list_y = t.item_id_idx_list_y.apply(lambda x: np.array(x) + n_users)
 
-    train_pos_list_df['ignor_neg_list'] = [list((set(a).union(b).union(c))) for a, b, c in
-                                           zip(train_pos_list_df.item_id_idx_list, train_pos_list_df.item_id_idx_list_x,
-                                               train_pos_list_df.item_id_idx_list_y)]
-    train_pos_list_df = train_pos_list_df[['user_id_idx', 'item_id_idx_list', 'ignor_neg_list']]
+    t['ignor_neg_list'] = [list((set(a).union(b).union(c))) for a, b, c in
+                           zip(t.item_id_idx_list, t.item_id_idx_list_x, t.item_id_idx_list_y)]
+    train_pos_list_df = t[['user_id_idx', 'item_id_idx_list', 'ignor_neg_list']]
 
     return train_pos_list_df
 
@@ -121,7 +116,7 @@ def prepare_val_test(train_df, val_df, test_df):
     Relabelling user/ item nodes in 3 set.
     Unique identify user, item nodes in train set
     Add pos_item_list to 3 set.
-    Add ignor_neg_list to train
+    Add ignor_neg_list to train set
 
     Args:
         train_df/ val_df/ test_df (Tensor): Raw train_df/ val_df/ test_df
@@ -143,7 +138,6 @@ def prepare_val_test(train_df, val_df, test_df):
 
     train_df['item_id_idx'] = train_df['item_id_idx'] + n_users
 
-    # train_df = pos_item_list(train_df, True)
     train_pos_list_df = pos_item_list(train_df)
     val_pos_list_df = pos_item_list(val_df)
     test_pos_list_df = pos_item_list(test_df)
@@ -155,11 +149,9 @@ def prepare_val_test(train_df, val_df, test_df):
 
 def df_to_graph(train_df, weight):
     r"""Convert dataset to bipartite graph_edge_index
-        return 2 * 132032, for model.forward
     Args:
         :param train_df: (Tensor) Raw train_df
         :param weight: Graph contains weight or not
-
     Returns:
 
     """
@@ -173,8 +165,9 @@ def df_to_graph(train_df, weight):
     if weight:
         w_t = torch.FloatTensor(train_df['weight'].values)
         edge_weights = torch.cat([w_t, w_t])
+        return graph_edge_index, edge_weights
 
-    return graph_edge_index, edge_weights if weight else graph_edge_index
+    return graph_edge_index
 
 
 def sample_neg(x, n_neg, n_users, n_itm):
@@ -187,18 +180,20 @@ def sample_neg(x, n_neg, n_users, n_itm):
     :return:
     """
 
-    neg_list = set()
+    neg_list = list()
     while len(neg_list) < n_neg:
-        neg_id = random.randint(0, n_itm - 1) + n_users
+        neg_id = random.randint(0, n_itm-1) + n_users
         if neg_id not in x:
-            neg_list.add(neg_id)
-    return list(neg_list)
+            neg_list.append(neg_id)
+    return neg_list
 
 
-def sample_pos(x, n_neg):
-    if n_neg <= len(x):
-        return sample(x, n_neg)
-    return (x * ceil(n_neg / len(x)))[:n_neg]
+# def sample_pos(x, n_neg):
+#     # list(np.repeat(x, n_neg))
+#
+#     if n_neg <= len(x):
+#         return sample(x, n_neg)
+#     return (x * ceil(n_neg / len(x)))[:n_neg]
 
 
 def pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_itm):
@@ -229,14 +224,13 @@ def pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_itm):
 
     """
 
-    # train_pos_list_df = train_pos_list_df.loc[train_pos_list_df['weight'] == 1].drop_duplicates('user_id_idx')
-    # users = torch.LongTensor(train_df['user_id_idx'].values)
-    users = torch.LongTensor(list(np.repeat(train_pos_list_df['user_id_idx'], n_neg)))
-    # pos_items = torch.LongTensor(train_df['item_id_idx'].values)
-    pos_items = torch.LongTensor(train_pos_list_df['item_id_idx_list'].apply(
-        lambda x: sample_pos(x, n_neg)).tolist()).reshape([-1])
-    neg_items = torch.LongTensor(train_pos_list_df['ignor_neg_list'].apply(
-        lambda x: sample_neg(x, n_neg, n_users, n_itm)).tolist()).reshape([-1])
+    u = [[a]*len(b)*n_neg for a, b in zip(train_pos_list_df.user_id_idx, train_pos_list_df.item_id_idx_list)]
+    users = torch.LongTensor(sum(u, []))
+    p = train_pos_list_df['item_id_idx_list'].apply(lambda x: x * n_neg).tolist()
+    pos_items = torch.LongTensor(sum(p, []))
+    n = [sample_neg(a, n_neg*len(b), n_users, n_itm) for a, b in
+         zip(train_pos_list_df.ignor_neg_list, train_pos_list_df.item_id_idx_list)]
+    neg_items = torch.LongTensor(sum(n, []))
 
     return users, pos_items, neg_items
 

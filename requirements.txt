@@ -12,3 +12,4 @@ torch_scatter
 sklearn
 numpy
 pandas_profiling
+tqdm
