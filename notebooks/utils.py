@@ -321,20 +321,25 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, K):
     :return: Recall@K, Precision@K
     """
 
+    test_pos_list_df = test_pos_list_df.sort_values(by=['user_id_idx'])
+
+    # users in this test set
+    users = list(test_pos_list_df['user_id_idx'])
+
     # compute the score of aim_user-item pairs
     # test_df_users = test_pos_list_df['user_id_idx']
     # user_Embed_wts = user_Embed_wts[test_df_users]
-    relevance_score = user_Embed_wts @ item_Embed_wts.t()
+    relevance_score = user_Embed_wts[users] @ item_Embed_wts.t()
 
     # mask out training user-item interactions from metric computation
     # relevance_score = torch.mul(relevance_score, (1 - test_u_i_matrix))
 
     # compute top scoring items for each user
-    r_cpu = relevance_score.cpu()
+    r_cpu = relevance_score
     topk_relevance_indices = torch.topk(r_cpu, K).indices
     topk_relevance_indices_df = pd.DataFrame(topk_relevance_indices.cpu().numpy())
     topk_relevance_indices_df['top_rlvnt_itm'] = topk_relevance_indices_df.values.tolist()
-    topk_relevance_indices_df['user_ID'] = topk_relevance_indices_df.index  # test_df_users
+    topk_relevance_indices_df['user_ID'] = users  # test_df_users
     topk_relevance_indices_df = topk_relevance_indices_df[['user_ID', 'top_rlvnt_itm']]
 
     # measure overlap between recommended (top-K) and held-out user-item interactions
