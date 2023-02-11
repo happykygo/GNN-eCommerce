@@ -7,6 +7,7 @@ from random import sample
 import pandas as pd
 import numpy as np
 from torch.utils.data import DataLoader
+from tqdm.notebook import tqdm
 
 
 def purchase_users(df):
@@ -61,8 +62,7 @@ def relabelling(train_df, val_df, test_df):
 
     return n_users, n_items, train_df, val_df, test_df
 
-
-# def interact_matrix(train_df, n_users, n_items):
+    # def interact_matrix(train_df, n_users, n_items):
     r"""
     create dense tensor of all user-item interactions
     :param device:
@@ -80,7 +80,7 @@ def relabelling(train_df, val_df, test_df):
     # return interactions_t
 
 
-def pos_item_list(df):      # , train
+def pos_item_list(df):  # , train
     r"""
     Generate Positive Item List
     :param train: true for train_df
@@ -108,10 +108,12 @@ def ignor_neg_item_list(train_pos_list_df, val_pos_list_df, test_pos_list_df, n_
     train_pos_list_df.item_id_idx_list_y = train_pos_list_df.item_id_idx_list_y.apply(lambda x: np.array(x) + n_users)
 
     train_pos_list_df['ignor_neg_list'] = [list((set(a).union(b).union(c))) for a, b, c in
-                                           zip(train_pos_list_df.item_id_idx_list, train_pos_list_df.item_id_idx_list_x, train_pos_list_df.item_id_idx_list_y)]
+                                           zip(train_pos_list_df.item_id_idx_list, train_pos_list_df.item_id_idx_list_x,
+                                               train_pos_list_df.item_id_idx_list_y)]
     train_pos_list_df = train_pos_list_df[['user_id_idx', 'item_id_idx_list', 'ignor_neg_list']]
 
     return train_pos_list_df
+
 
 def prepare_val_test(train_df, val_df, test_df):
     r"""
@@ -187,7 +189,7 @@ def sample_neg(x, n_neg, n_users, n_itm):
 
     neg_list = set()
     while len(neg_list) < n_neg:
-        neg_id = random.randint(0, n_itm - 1)+n_users
+        neg_id = random.randint(0, n_itm - 1) + n_users
         if neg_id not in x:
             neg_list.add(neg_id)
     return list(neg_list)
@@ -196,7 +198,7 @@ def sample_neg(x, n_neg, n_users, n_itm):
 def sample_pos(x, n_neg):
     if n_neg <= len(x):
         return sample(x, n_neg)
-    return (x * ceil(n_neg/len(x)))[:n_neg]
+    return (x * ceil(n_neg / len(x)))[:n_neg]
 
 
 def pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_itm):
@@ -274,19 +276,17 @@ def regularization_loss(init_embed, batch_size, batch_usr, batch_pos, batch_neg,
     return reg_loss * DECAY
 
 
-def train_loop(train_pos_list_df, n_users, n_items, n_neg, edge_index, edge_weight, model, optimizer, BATCH_SIZE):
+def train_loop(users, pos_items, neg_items, edge_index, edge_weight, model, optimizer, BATCH_SIZE, device):
     bpr_loss_batch_list = []
     reg_loss_batch_list = []
     final_loss_batch_list = []
-
-    users, pos_items, neg_items = pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_items)
 
     idx = list(range(len(users)))
     random.shuffle(idx)
     loader = DataLoader(idx, batch_size=BATCH_SIZE, shuffle=True)
 
     model.train()
-    for batch in loader:
+    for batch_num, batch in enumerate(loader):
         optimizer.zero_grad()
 
         batch_usr = users[batch]
@@ -336,7 +336,8 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, K):
     # relevance_score = torch.mul(relevance_score, (1 - test_u_i_matrix))
 
     # compute top scoring items for each user
-    topk_relevance_indices = torch.topk(relevance_score, K).indices
+    r_cpu = relevance_score.cpu()
+    topk_relevance_indices = torch.topk(r_cpu, K).indices
     topk_relevance_indices_df = pd.DataFrame(topk_relevance_indices.cpu().numpy())
     topk_relevance_indices_df['top_rlvnt_itm'] = topk_relevance_indices_df.values.tolist()
     topk_relevance_indices_df['user_ID'] = topk_relevance_indices_df.index  # test_df_users
@@ -360,9 +361,50 @@ def evaluation(model, n_users, n_items, edge_index, edge_weight, test_pos_list_d
     with torch.no_grad():
         embeds = model.get_embedding(edge_index, edge_weight)
         final_usr_embed, final_item_embed = torch.split(embeds, (n_users, n_items))
-        test_topK_recall, test_topK_precision = \
-            get_metrics(final_usr_embed, final_item_embed, test_pos_list_df, K)  # test_u_i_matrix,
+        test_topK_recall, test_topK_precision = get_metrics(final_usr_embed, final_item_embed, test_pos_list_df, K)  # test_u_i_matrix,
 
     precision = round(test_topK_precision, 4)
     recall = round(test_topK_recall, 4)
     return precision, recall
+
+
+def train_and_evl(n_users, n_items, n_neg, train_df, train_pos_list_df, test_pos_list_df, model, optimizer, device,
+                  EPOCHS=50, BATCH_SIZE=1024, K=20, DECAY=0.0001):  # test_u_i_matrix,
+    edge_index, edge_weight = df_to_graph(train_df, True)
+
+    # test_u_i_matrix = test_u_i_matrix.to(device)
+    edge_index = edge_index.to(device)
+    edge_weight = edge_weight.to(device)
+    model.to(device)
+
+    bpr_loss_epoch_list = []
+    reg_loss_epoch_list = []
+    final_loss_epoch_list = []
+    recall_epoch_list = []
+    precision_epoch_list = []
+
+    print('bpr_loss | reg_loss | final_loss | precision | recall')
+    for epoch in tqdm(range(EPOCHS)):
+        users, pos_items, neg_items = pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_items)
+        users = users.to(device)
+        pos_items = pos_items.to(device)
+        neg_items = neg_items.to(device)
+
+        bpr_loss, reg_loss, final_loss = train_loop(users, pos_items, neg_items, edge_index, edge_weight, model,
+                                                    optimizer, BATCH_SIZE, device)
+
+        precision, recall = evaluation(model, n_users, n_items, edge_index, edge_weight, test_pos_list_df, K)
+
+        print(bpr_loss, reg_loss, final_loss, precision, recall)
+        bpr_loss_epoch_list.append(bpr_loss)
+        reg_loss_epoch_list.append(reg_loss)
+        final_loss_epoch_list.append(final_loss)
+        recall_epoch_list.append(recall)
+        precision_epoch_list.append(precision)
+
+    return (
+        bpr_loss_epoch_list,
+        reg_loss_epoch_list,
+        final_loss_epoch_list,
+        recall_epoch_list,
+        precision_epoch_list)
