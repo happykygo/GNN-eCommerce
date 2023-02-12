@@ -1,10 +1,11 @@
 .idea/
 .git/
 venv/
-notebooks/.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+model-checkpoints/
 
-# experiment files
-/notebooks/MediumTest.ipynb
-/notebooks/Archive/
-/doc/
-/data/ml-100k/
+# Experiment files
+notebooks/MediumTest.ipynb
+notebooks/Archive/
+doc/
+data/ml-100k/
