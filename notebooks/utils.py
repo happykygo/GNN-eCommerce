@@ -63,24 +63,6 @@ def relabelling(train_df, val_df, test_df):
     return n_users, n_items, train_df, val_df, test_df
 
 
-    # def interact_matrix(train_df, n_users, n_items):
-    # r"""
-    # create dense tensor of all user-item interactions
-    # :param device:
-    # :param train_df: with 'user_id_idx' and 'item_id_idx'
-    # :param n_users:
-    # :param n_items:
-    # :return:
-    # """
-    # i = torch.stack((
-    #     torch.LongTensor(train_df['user_id_idx'].values),
-    #     torch.LongTensor(train_df['item_id_idx'].values)
-    # ))
-    # v = torch.ones((len(train_df)), dtype=torch.float64)
-    # interactions_t = torch.sparse.FloatTensor(i, v, (n_users, n_items)).to_dense()
-    # return interactions_t
-
-
 def pos_item_list(df):
     r"""
     Generate Positive Item List for df
@@ -315,7 +297,25 @@ def train_loop(users, pos_items, neg_items, edge_index, edge_weight, model, opti
     return np.mean(bpr_loss_batch_list), np.mean(reg_loss_batch_list), np.mean(final_loss_batch_list)
 
 
-def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, K):
+def interact_matrix(train_df, n_users, n_items):
+    r"""
+    create dense tensor of all user-item interactions
+    :param device:
+    :param train_df: with 'user_id_idx' and 'item_id_idx'
+    :param n_users:
+    :param n_items:
+    :return:
+    """
+    i = torch.stack((
+        torch.LongTensor(train_df['user_id_idx'].values),
+        torch.LongTensor(train_df['item_id_idx'].values)
+    ))
+    v = torch.ones((len(train_df)), dtype=torch.float64)
+    interactions_t = torch.sparse.FloatTensor(i, v, (n_users, n_items))
+    return interactions_t
+
+
+def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, K, interactions_t):
     # test_u_i_matrix,
     r"""
     Compute Precision@K, Recall@K
@@ -338,7 +338,8 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, K):
     relevance_score = user_Embed_wts[users] @ item_Embed_wts.t()
 
     # mask out training user-item interactions from metric computation
-    # relevance_score = torch.mul(relevance_score, (1 - test_u_i_matrix))
+    interactions_t = torch.index_select(interactions_t, 0, users)
+    relevance_score = torch.mul(relevance_score, (1 - interactions_t))
 
     # compute top scoring items for each user
     r_cpu = relevance_score.cpu()
