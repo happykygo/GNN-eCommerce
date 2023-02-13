@@ -18,7 +18,7 @@ class TrainLightGCN:
 
         self.n_users, self.n_items, self.train_df, self.train_pos_list_df, self.val_pos_list_df, self.test_pos_list_df \
             = prepare_val_test(train_df, val_df, test_df)
-        self.interactions_t = interaction_matrix(self.train_df, self.n_users, self.n_items)
+        self.interactions_t = interact_matrix(self.train_df, self.n_users, self.n_items)
         self.edge_index, self.edge_weight = df_to_graph(train_df, True)
         self.edge_index = self.edge_index.to(self.device)
         self.edge_weight = self.edge_weight.to(self.device)

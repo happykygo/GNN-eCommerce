@@ -154,7 +154,6 @@ def sample_neg(x, n_neg, n_users, n_itm):
     :param n_itm:
     :return:
     """
-
     neg_list = list()
     while len(neg_list) < n_neg:
         neg_id = random.randint(0, n_itm-1) + n_users
