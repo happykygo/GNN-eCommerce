@@ -5,7 +5,6 @@ venv/
 model-checkpoints/
 
 # Experiment files
-notebooks/MediumTest.ipynb
 notebooks/Archive/
 doc/
 data/ml-100k/
