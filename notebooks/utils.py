@@ -1,9 +1,6 @@
-from math import ceil
-
 from sklearn import preprocessing as pp
 import torch
 import random
-from random import sample
 import pandas as pd
 import numpy as np
 from torch.utils.data import DataLoader
@@ -72,8 +69,6 @@ def pos_item_list(df):
     u_posI_List = df.loc[df['weight'] == 1]
     u_posI_List = u_posI_List.groupby('user_id_idx')['item_id_idx'].apply(list).reset_index()
     u_posI_List.columns = ['user_id_idx', 'item_id_idx_list']
-    # if train:
-    #     u_posI_List = pd.merge(u_posI_List, df, how='right', left_on='user_id_idx', right_on='user_id_idx')
     return u_posI_List
 
 
@@ -113,12 +108,6 @@ def prepare_val_test(train_df, val_df, test_df):
     val_df, test_df = sync_nodes(train_df, val_df, test_df)
     n_users, n_items, train_df, val_df, test_df = relabelling(train_df, val_df, test_df)
 
-    # i_m = interact_matrix(train_df, n_users, n_items)
-    # val_df_users = val_df['user_id_idx'].unique()
-    # test_df_users = test_df['user_id_idx'].unique()
-    # val_u_i_matrix = i_m[val_df_users]
-    # test_u_i_matrix = i_m[test_df_users]
-
     train_df['item_id_idx'] = train_df['item_id_idx'] + n_users
 
     train_pos_list_df = pos_item_list(train_df)
@@ -127,7 +116,7 @@ def prepare_val_test(train_df, val_df, test_df):
 
     train_pos_list_df = ignor_neg_item_list(train_pos_list_df, val_pos_list_df, test_pos_list_df, n_users)
 
-    return n_users, n_items, train_df, train_pos_list_df, val_pos_list_df, test_pos_list_df  # , val_u_i_matrix, test_u_i_matrix
+    return n_users, n_items, train_df, train_pos_list_df, val_pos_list_df, test_pos_list_df
 
 
 def df_to_graph(train_df, weight):
@@ -162,21 +151,12 @@ def sample_neg(x, n_neg, n_users, n_itm):
     :param n_itm:
     :return:
     """
-
     neg_list = list()
     while len(neg_list) < n_neg:
         neg_id = random.randint(0, n_itm-1) + n_users
         if neg_id not in x:
             neg_list.append(neg_id)
     return neg_list
-
-
-# def sample_pos(x, n_neg):
-#     # list(np.repeat(x, n_neg))
-#
-#     if n_neg <= len(x):
-#         return sample(x, n_neg)
-#     return (x * ceil(n_neg / len(x)))[:n_neg]
 
 
 def pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_itm):
@@ -222,10 +202,6 @@ def pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_itm):
 
 def batch_pos_neg_edges(users, pos_items, neg_items):
     r"""Return (user+user, pos+neg) edge labels
-
-    Args:
-        users, pos_items, neg_items
-
     """
     users_label = torch.cat([users, users])
     pos_neg_items_label = torch.cat([pos_items, neg_items])
@@ -307,8 +283,7 @@ def interact_matrix(train_df, n_users, n_items):
     return interactions_t
 
 
-def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, K, interactions_t):
-    # test_u_i_matrix,
+def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, interactions_t, K):
     r"""
     Compute Precision@K, Recall@K
     # :param test_u_i_matrix:
@@ -318,17 +293,12 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, K, interaction
     :param K:
     :return: Recall@K, Precision@K
     """
-
+    # prepare test set user list mask
     test_pos_list_df = test_pos_list_df.sort_values(by=['user_id_idx'])
-
-    # users in this test set
     users = list(test_pos_list_df['user_id_idx'])
 
     # compute the score of aim_user-item pairs
-    # test_df_users = test_pos_list_df['user_id_idx']
-    # user_Embed_wts = user_Embed_wts[test_df_users]
     relevance_score = user_Embed_wts[users] @ item_Embed_wts.t()
-
     # mask out training user-item interactions from metric computation
     interactions_t = torch.index_select(interactions_t, 0, users)
     relevance_score = torch.mul(relevance_score, (1 - interactions_t))
@@ -338,11 +308,10 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, K, interaction
     topk_relevance_indices = torch.topk(r_cpu, K).indices
     topk_relevance_indices_df = pd.DataFrame(topk_relevance_indices.numpy())
     topk_relevance_indices_df['top_rlvnt_itm'] = topk_relevance_indices_df.values.tolist()
-    topk_relevance_indices_df['user_ID'] = users  # test_df_users
+    topk_relevance_indices_df['user_ID'] = users
     topk_relevance_indices_df = topk_relevance_indices_df[['user_ID', 'top_rlvnt_itm']]
 
     # measure overlap between recommended (top-K) and held-out user-item interactions
-    # test_interacted_items = test_pos_list_df.groupby('user_id_idx')['item_id_idx'].apply(list).reset_index()
     metrics_df = pd.merge(test_pos_list_df, topk_relevance_indices_df,
                           how='left', left_on='user_id_idx', right_on='user_ID')
     metrics_df['intrsctn_itm'] = [list(set(a).intersection(b)) for a, b in
@@ -354,20 +323,21 @@ def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, K, interaction
     return metrics_df['recall'].mean(), metrics_df['precision'].mean()
 
 
-def evaluation(model, n_users, n_items, edge_index, edge_weight, test_pos_list_df, K):  # test_u_i_matrix,
+def evaluation(model, n_users, n_items, edge_index, edge_weight, test_pos_list_df, interactions_t, K):
     model.eval()
     with torch.no_grad():
         embeds = model.get_embedding(edge_index, edge_weight)
         final_usr_embed, final_item_embed = torch.split(embeds, [n_users, n_items])
-        test_topK_recall, test_topK_precision = get_metrics(final_usr_embed, final_item_embed, test_pos_list_df, K)  # test_u_i_matrix,
+        test_topK_recall, test_topK_precision = get_metrics(final_usr_embed, final_item_embed,
+                                                            test_pos_list_df, interactions_t, K)
 
     return test_topK_precision, test_topK_recall
 
 
-def train_and_evl(n_users, n_items, n_neg, edge_index, edge_weight, train_pos_list_df, test_pos_list_df, model, optimizer, device,
-                  EPOCHS=50, BATCH_SIZE=1024, K=20, DECAY=0.0001, checkpoint_dir="", log_interval=10):  # test_u_i_matrix,
+def train_and_evl(n_users, n_items, n_neg, edge_index, edge_weight, train_pos_list_df, test_pos_list_df, interactions_t,
+                  model, optimizer, device, EPOCHS=50, BATCH_SIZE=1024, K=20, DECAY=0.0001, checkpoint_dir="", log_interval=10):
 
-    # test_u_i_matrix = test_u_i_matrix.to(device)
+    interactions_t = interactions_t.to(device)
     edge_index = edge_index.to(device)
     edge_weight = edge_weight.to(device)
     model.to(device)
@@ -389,7 +359,7 @@ def train_and_evl(n_users, n_items, n_neg, edge_index, edge_weight, train_pos_li
         bpr_loss, reg_loss, final_loss = train_loop(users, pos_items, neg_items, edge_index, edge_weight, model,
                                                     optimizer, BATCH_SIZE, log_interval)
 
-        precision, recall = evaluation(model, n_users, n_items, edge_index, edge_weight, test_pos_list_df, K)
+        precision, recall = evaluation(model, n_users, n_items, edge_index, edge_weight, test_pos_list_df, interactions_t, K)
 
         bpr_loss_epoch_list.append(bpr_loss)
         reg_loss_epoch_list.append(reg_loss)
