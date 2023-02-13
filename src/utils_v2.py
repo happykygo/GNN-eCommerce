@@ -110,7 +110,7 @@ def prepare_val_test(train_df, val_df, test_df):
     """
     val_df, test_df = sync_nodes(train_df, val_df, test_df)
     n_users, n_items, train_df, val_df, test_df = relabelling(train_df, val_df, test_df)
-
+    interactions_t = interact_matrix(train_df, n_users, n_items)
     train_df['item_id_idx'] = train_df['item_id_idx'] + n_users
 
     train_pos_list_df = pos_item_list(train_df)
@@ -119,7 +119,7 @@ def prepare_val_test(train_df, val_df, test_df):
 
     train_pos_list_df = ignor_neg_item_list(train_pos_list_df, val_pos_list_df, test_pos_list_df, n_users)
 
-    return n_users, n_items, train_df, train_pos_list_df, val_pos_list_df, test_pos_list_df
+    return n_users, n_items, train_df, train_pos_list_df, val_pos_list_df, test_pos_list_df, interactions_t
 
 
 def df_to_graph(train_df, weight):
@@ -229,46 +229,6 @@ def interact_matrix(train_df, n_users, n_items):
     return interactions_t
 
 
-def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, interactions_t, K):
-    r"""
-    Compute Precision@K, Recall@K
-    # :param test_u_i_matrix:
-    :param user_Embed_wts:
-    :param item_Embed_wts:
-    :param test_pos_list_df:
-    :param K:
-    :return: Recall@K, Precision@K
-    """
-    # prepare test set user list mask
-    test_pos_list_df = test_pos_list_df.sort_values(by=['user_id_idx'])
-    users = list(test_pos_list_df['user_id_idx'])
-
-    # compute the score of aim_user-item pairs
-    relevance_score = user_Embed_wts[users] @ item_Embed_wts.t()
-    # mask out training user-item interactions from metric computation
-    interactions_t = torch.index_select(interactions_t, 0, users)
-    relevance_score = torch.mul(relevance_score, (1 - interactions_t))
-
-    # compute top scoring items for each user
-    r_cpu = relevance_score.cpu()
-    topk_relevance_indices = torch.topk(r_cpu, K).indices
-    topk_relevance_indices_df = pd.DataFrame(topk_relevance_indices.numpy())
-    topk_relevance_indices_df['top_rlvnt_itm'] = topk_relevance_indices_df.values.tolist()
-    topk_relevance_indices_df['user_ID'] = users
-    topk_relevance_indices_df = topk_relevance_indices_df[['user_ID', 'top_rlvnt_itm']]
-
-    # measure overlap between recommended (top-K) and held-out user-item interactions
-    metrics_df = pd.merge(test_pos_list_df, topk_relevance_indices_df,
-                          how='left', left_on='user_id_idx', right_on='user_ID')
-    metrics_df['intrsctn_itm'] = [list(set(a).intersection(b)) for a, b in
-                                  zip(metrics_df.item_id_idx_list, metrics_df.top_rlvnt_itm)]  # TP
-
-    metrics_df['recall'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / len(x['item_id_idx_list']), axis=1)
-    metrics_df['precision'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / K, axis=1)
-
-    return metrics_df['recall'].mean(), metrics_df['precision'].mean()
-
-
 def regularization_loss(init_embed, batch_size, batch_usr, batch_pos, batch_neg, decay):
     r"""
     Compute loss from initial embeddings, used for regularization
@@ -296,7 +256,7 @@ def save_model(path, model, optimizer, precision, recall, epoch=None):
     """
 
     now = datetime.now()
-    dt_string = now.strftime("%Y-%m-%d_%H.%M.%S")
+    dt_string = now.strftime("%Y-%m-%d %H:%M:%S")
 
     torch.save({
                 'timestamp': dt_string,
