@@ -1,2 +1,4 @@
 /interaction_matrix.csv
 /user_item_event.csv
+/u_i_weight_0.01_0.1_-0.09.csv
+/u_i_weight_0.15_0.35_-0.2.csv
