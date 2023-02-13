@@ -298,14 +298,6 @@ def train_loop(users, pos_items, neg_items, edge_index, edge_weight, model, opti
 
 
 def interact_matrix(train_df, n_users, n_items):
-    r"""
-    create dense tensor of all user-item interactions
-    :param device:
-    :param train_df: with 'user_id_idx' and 'item_id_idx'
-    :param n_users:
-    :param n_items:
-    :return:
-    """
     i = torch.stack((
         torch.LongTensor(train_df['user_id_idx'].values),
         torch.LongTensor(train_df['item_id_idx'].values)
