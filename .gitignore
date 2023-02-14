@@ -2,7 +2,6 @@
 .git/
 venv/
 **/.ipynb_checkpoints/
-model-checkpoints/
 
 # Experiment files
 notebooks/Archive/
