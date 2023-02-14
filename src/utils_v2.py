@@ -128,7 +128,6 @@ def df_to_graph(train_df, weight):
         :param train_df: (Tensor) Raw train_df
         :param weight: Graph contains weight or not
     Returns:
-
     """
     u_t = torch.LongTensor(train_df['user_id_idx'].values)
     i_t = torch.LongTensor(train_df['item_id_idx'].values)
@@ -162,44 +161,37 @@ def sample_neg(x, n_neg, n_users, n_itm):
     return neg_list
 
 
-def pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_itm):
+def pos_neg_edge_index(train_pos_list_df, n_users, n_itm):
     r"""Generate random neg_item for each (usr, pos_item) pair
-    example: if n_neg=2
-    train_df as below:
+    example:
+    train_pos_list_df as below:
     user    pos_list
     u1      [1,2,3]
     u2      [7,8]
 
-    Output should be(pos, neg item ids are + n_users):
+    Output should be(pos, neg item ids are +n_users):
     user    pos     neg
     u1      1       11
     u1      2       16
     u1      3       77
-    u1      1       69
-    u1      2       33
-    u1      3       98
     u2      7       4
     u2      8       9
-    u2      7       10
-    u2      8       26
 
     Args:
-        :param n_neg:
         :param train_pos_list_df: (Tensor)
         :param n_users: number of users
         :param n_itm: number of items
-
     Returns:
         users, pos_items, neg_items
 
     """
-    u = [[a]*len(b)*n_neg for a, b in zip(train_pos_list_df.user_id_idx, train_pos_list_df.item_id_idx_list)]
-    u = [item for sublist in u for item in sublist]   # flatten list of list
+    u = [[a]*len(b) for a, b in zip(train_pos_list_df.user_id_idx, train_pos_list_df.item_id_idx_list)]
+    u = [item for sublist in u for item in sublist]
     users = torch.LongTensor(u)
-    p = train_pos_list_df['item_id_idx_list'].apply(lambda x: x * n_neg).tolist()
+    p = train_pos_list_df.item_id_idx_list.values.tolist()
     p = [item for sublist in p for item in sublist]
     pos_items = torch.LongTensor(p)
-    n = [sample_neg(a, n_neg*len(b), n_users, n_itm) for a, b in
+    n = [sample_neg(a, len(b), n_users, n_itm) for a, b in
          zip(train_pos_list_df.ignor_neg_list, train_pos_list_df.item_id_idx_list)]
     n = [item for sublist in n for item in sublist]
     neg_items = torch.LongTensor(n)

@@ -7,16 +7,13 @@ import argparse
 
 
 class TrainLightGCN:
-    def __init__(self, csv_path, checkpoints_dir="model-checkpoints", samples=None):  # "interaction_matrix.csv"
+    def __init__(self, csv_path, checkpoints_dir="model-checkpoints", samples=None):
         self.checkpoints_dir = checkpoints_dir
         self.csv_path = csv_path
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         interaction_matrix = pd.read_csv(self.csv_path)
-        # todo remove after data pipeline is done
-        interaction_matrix = interaction_matrix.rename(columns={"product_id": "item_id"})
-        interaction_matrix = interaction_matrix[['user_id', 'item_id', 'weight']]
         if samples:
             interaction_matrix = interaction_matrix.sample(samples)
 
@@ -46,15 +43,15 @@ class TrainLightGCN:
             "LR": 0.005,
             "DECAY": 0.0001,  # reg loss
             "BATCH_SIZE": 1024,  # train mini batch size
-            "n_neg": 1  # number of negative sample edges per each positive edge
+            # "n_neg": 1  # number of negative sample edges per each positive edge
         }
 
         model = LightGCN(self.n_users + self.n_items, tune_config["latent_dim"], tune_config["n_layers"])
         optimizer = torch.optim.Adam(model.parameters(), tune_config["LR"])
 
         K = 20   # Recall@K
-        self.train(model, optimizer, tune_config["n_neg"], EPOCHS=EPOCHS,
-                   BATCH_SIZE=tune_config["BATCH_SIZE"], K=K, DECAY=tune_config["DECAY"], checkpoint_dir=self.checkpoints_dir)
+        self.train(model, optimizer, EPOCHS=EPOCHS, BATCH_SIZE=tune_config["BATCH_SIZE"], K=K,
+                   DECAY=tune_config["DECAY"], checkpoint_dir=self.checkpoints_dir)
 
         best_model = torch.load(self.checkpoints_dir + "/LightGCN_best.pt")
         best_epoch = best_model['epoch']
@@ -70,8 +67,7 @@ class TrainLightGCN:
         print(f"Best epoch ({best_epoch}): Val Precision@{K}: {best_val_precision:>7f}, Recall@{K}: {best_val_recall:>7f}")
         print(f"Test Precision@{K}: {test_p:>7f}, Recall@{K}: {test_recall:>7f}")
 
-    def train(self, model, optimizer, n_neg=1, EPOCHS=50, BATCH_SIZE=1024, K=20,
-                      DECAY=0.0001, checkpoint_dir=""):
+    def train(self, model, optimizer, EPOCHS=50, BATCH_SIZE=1024, K=20, DECAY=0.0001, checkpoint_dir=""):
 
         model.to(self.device)
 
@@ -87,7 +83,7 @@ class TrainLightGCN:
 
         #for epoch in tqdm(range(EPOCHS)):
         for epoch in range(EPOCHS):
-            users, pos_items, neg_items = pos_neg_edge_index(self.train_pos_list_df, n_neg, self.n_users, self.n_items)
+            users, pos_items, neg_items = pos_neg_edge_index(self.train_pos_list_df, self.n_users, self.n_items)
             #print(f"Total train set size = {len(users)}")
             users = users.to(self.device)
             pos_items = pos_items.to(self.device)
@@ -130,7 +126,7 @@ class TrainLightGCN:
 
         model.train()
         #for batch_num, batch in enumerate(tqdm(loader)):
-        for batch_num, batch in enumerate((loader)):
+        for batch_num, batch in enumerate(loader):
             optimizer.zero_grad()
 
             batch_usr = users[batch]
@@ -209,7 +205,8 @@ def main(max_num_epochs=20, gpus_per_trial=1):
     with open("config.yaml") as config_file:
         config = yaml.safe_load(config_file)
 
-    csv_path = config['data']['preprocessed'] + "interaction_matrix.csv"
+    csv_path = config['data']['preprocessed'] + "u_i_weight_0.01_0.1_-0.09.csv"
+    # file 2 -- u_i_weight_0.15_0.35_-0.2.csv
     checkpoint_dir = config['training']['checkpoints_dir']
     train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir)
     train_lightgcn(max_num_epochs, gpus_per_trial)
