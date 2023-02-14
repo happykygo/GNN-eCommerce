@@ -17,11 +17,12 @@ class TrainLightGCN:
         if samples:
             interaction_matrix = interaction_matrix.sample(samples)
 
-        train_df, test_df = train_test_split(interaction_matrix, test_size=0.1)
+        train_df, test_df = train_test_split(interaction_matrix, test_size=0.05)
         test_df, val_df = train_test_split(test_df, test_size=0.5)
 
         self.n_users, self.n_items, self.train_df, self.train_pos_list_df, self.val_pos_list_df, \
-            self.test_pos_list_df, self.interactions_t = prepare_val_test(train_df, val_df, test_df)
+            self.test_pos_list_df, self.val_interactions_t, self.test_interactions_t = \
+            prepare_val_test(train_df, val_df, test_df)
 
         print("n_users : ", self.n_users, ", n_items : ", self.n_items)
         print("train_df Size  : ", len(self.train_df))
@@ -29,16 +30,16 @@ class TrainLightGCN:
         print("test_pos_list_df Size : ", len(self.test_pos_list_df))
 
         self.edge_index, self.edge_weight = df_to_graph(train_df, True)
+
         self.edge_index = self.edge_index.to(self.device)
         self.edge_weight = self.edge_weight.to(self.device)
-        self.interactions_t = self.interactions_t.to(self.device)
 
     def __call__(self, *args, **kwargs):
 
         EPOCHS = int(args[0])
 
         tune_config = {
-            "latent_dim":  80,
+            "latent_dim": 80,
             "n_layers": 3,
             "LR": 0.005,
             "DECAY": 0.0001,  # reg loss
@@ -62,7 +63,7 @@ class TrainLightGCN:
         test_model.load_state_dict(best_model['model_state_dict'])
 
         # Evaluate model using test set
-        test_p, test_recall = self.test(model, self.test_pos_list_df, K)
+        test_p, test_recall = self.test(model, self.test_pos_list_df, self.test_interactions_t, K)
 
         print(f"Best epoch ({best_epoch}): Val Precision@{K}: {best_val_precision:>7f}, Recall@{K}: {best_val_recall:>7f}")
         print(f"Test Precision@{K}: {test_p:>7f}, Recall@{K}: {test_recall:>7f}")
@@ -91,7 +92,7 @@ class TrainLightGCN:
 
             bpr_loss, reg_loss, final_loss = self.mini_batch_loop(users, pos_items, neg_items, model, optimizer, BATCH_SIZE, DECAY)
 
-            precision, recall = self.test(model, self.val_pos_list_df, K)
+            precision, recall = self.test(model, self.val_pos_list_df, self.val_interactions_t, K)
 
             bpr_loss_epoch_list.append(bpr_loss)
             reg_loss_epoch_list.append(reg_loss)
@@ -150,13 +151,13 @@ class TrainLightGCN:
 
         return np.mean(bpr_loss_batch_list), np.mean(reg_loss_batch_list), np.mean(final_loss_batch_list)
 
-    def test(self, model, test_pos_list_df, K):
+    def test(self, model, test_pos_list_df, interactions_t, K):
         model.eval()
         with torch.no_grad():
             embeds = model.get_embedding(self.edge_index, self.edge_weight)
             final_usr_embed, final_item_embed = torch.split(embeds, [self.n_users, self.n_items])
             test_topK_recall, test_topK_precision = self.get_metrics(final_usr_embed, final_item_embed,
-                                                                test_pos_list_df, self.interactions_t, K)
+                                                                test_pos_list_df, interactions_t, K)
 
         return test_topK_precision, test_topK_recall
 
@@ -171,19 +172,23 @@ class TrainLightGCN:
         :return: Recall@K, Precision@K
         """
         # prepare test set user list mask
-        test_pos_list_df = test_pos_list_df.sort_values(by=['user_id_idx'])
+        # test_pos_list_df = test_pos_list_df.sort_values(by=['user_id_idx'])
         users = list(test_pos_list_df['user_id_idx'])
         #print(f"Test users: {len(users)}")
 
         # compute the score of aim_user-item pairs
         relevance_score = user_Embed_wts[users] @ item_Embed_wts.t()
-        # mask out training user-item interactions from metric computation
-        #interactions_t = torch.index_select(interactions_t, 0, torch.tensor(users).to(self.device)).to_dense()
-        #relevance_score = torch.mul(relevance_score, (1 - interactions_t))
 
+        # CPU
+        # mask out training user-item interactions from metric computation
+        # interactions_t = torch.index_select(interactions_t, 0, torch.tensor(users))
+        # print(f"interactions_t shape: {interactions_t.shape}")
+        # interactions_t = interactions_t.to_dense()
+
+        relevance_score = relevance_score.cpu()
+        masked_relevance_score = torch.mul(relevance_score, (1 - interactions_t))
         # compute top scoring items for each user
-        r_cpu = relevance_score.cpu()
-        topk_relevance_indices = torch.topk(r_cpu, K).indices
+        topk_relevance_indices = torch.topk(masked_relevance_score, K).indices
         topk_relevance_indices_df = pd.DataFrame(topk_relevance_indices.numpy())
         topk_relevance_indices_df['top_rlvnt_itm'] = topk_relevance_indices_df.values.tolist()
         topk_relevance_indices_df['user_ID'] = users

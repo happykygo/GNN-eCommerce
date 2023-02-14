@@ -91,6 +91,19 @@ def ignor_neg_item_list(train_pos_list_df, val_pos_list_df, test_pos_list_df, n_
     return train_pos_list_df
 
 
+def interact_matrix(train_df, n_users, n_items):
+    r"""
+    create sparse tensor of all user-item interactions
+    """
+    i = torch.stack((
+        torch.LongTensor(train_df['user_id_idx'].values),
+        torch.LongTensor(train_df['item_id_idx'].values)
+    ))
+    v = torch.ones((len(train_df)), dtype=torch.float32)
+    interactions_t = torch.sparse.FloatTensor(i, v, (n_users, n_items))
+    return interactions_t
+
+
 def prepare_val_test(train_df, val_df, test_df):
     r"""
     Sync nodes
@@ -114,12 +127,21 @@ def prepare_val_test(train_df, val_df, test_df):
     train_df['item_id_idx'] = train_df['item_id_idx'] + n_users
 
     train_pos_list_df = pos_item_list(train_df)
-    val_pos_list_df = pos_item_list(val_df)
-    test_pos_list_df = pos_item_list(test_df)
+    val_pos_list_df = pos_item_list(val_df).sort_values(by=['user_id_idx'])
+    test_pos_list_df = pos_item_list(test_df).sort_values(by=['user_id_idx'])
+
+    # prepare val/ test set user list mask
+    val_users = list(val_pos_list_df['user_id_idx'])
+    test_users = list(test_pos_list_df['user_id_idx'])
+
+    # mask out training user-item interactions from metric computation
+    val_interactions_t = torch.index_select(interactions_t, 0, torch.tensor(val_users)).to_dense()
+    test_interactions_t = torch.index_select(interactions_t, 0, torch.tensor(test_users)).to_dense()
 
     train_pos_list_df = ignor_neg_item_list(train_pos_list_df, val_pos_list_df, test_pos_list_df, n_users)
 
-    return n_users, n_items, train_df, train_pos_list_df, val_pos_list_df, test_pos_list_df, interactions_t
+    return n_users, n_items, train_df, train_pos_list_df, val_pos_list_df, test_pos_list_df, \
+        val_interactions_t, test_interactions_t
 
 
 def df_to_graph(train_df, weight):
@@ -208,19 +230,6 @@ def batch_pos_neg_edges(users, pos_items, neg_items):
     return batch_pos_neg_labels
 
 
-def interact_matrix(train_df, n_users, n_items):
-    r"""
-    create sparse tensor of all user-item interactions
-    """
-    i = torch.stack((
-        torch.LongTensor(train_df['user_id_idx'].values),
-        torch.LongTensor(train_df['item_id_idx'].values)
-    ))
-    v = torch.ones((len(train_df)), dtype=torch.float64)
-    interactions_t = torch.sparse.FloatTensor(i, v, (n_users, n_items))
-    return interactions_t
-
-
 def regularization_loss(init_embed, batch_size, batch_usr, batch_pos, batch_neg, decay):
     r"""
     Compute loss from initial embeddings, used for regularization
@@ -259,4 +268,4 @@ def save_model(path, model, optimizer, precision, recall, epoch=None):
                 'recall': recall
                 }, path)
 
-    print(f"Model {path} saved at {dt_string}")
+    print(f"{path} saved at {dt_string}")
