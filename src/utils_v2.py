@@ -54,9 +54,9 @@ def relabelling(train_df, val_df, test_df):
     test_df['user_id_idx'] = le_user.transform(test_df['user_id'].values)
     test_df['item_id_idx'] = le_item.transform(test_df['item_id'].values)
 
-    train_df = train_df.drop(columns=['user_id', 'item_id'])
-    val_df = val_df.drop(columns=['user_id', 'item_id'])
-    test_df = test_df.drop(columns=['user_id', 'item_id'])
+    # train_df = train_df.drop(columns=['user_id', 'item_id'])
+    # val_df = val_df.drop(columns=['user_id', 'item_id'])
+    # test_df = test_df.drop(columns=['user_id', 'item_id'])
 
     n_users = train_df['user_id_idx'].nunique()
     n_items = train_df['item_id_idx'].nunique()
@@ -123,6 +123,7 @@ def prepare_val_test(train_df, val_df, test_df):
     """
     val_df, test_df = sync_nodes(train_df, val_df, test_df)
     n_users, n_items, train_df, val_df, test_df = relabelling(train_df, val_df, test_df)
+
     interactions_t = interact_matrix(train_df, n_users, n_items)
     train_df['item_id_idx'] = train_df['item_id_idx'] + n_users
 
@@ -141,7 +142,7 @@ def prepare_val_test(train_df, val_df, test_df):
     train_pos_list_df = ignor_neg_item_list(train_pos_list_df, val_pos_list_df, test_pos_list_df, n_users)
 
     return n_users, n_items, train_df, train_pos_list_df, val_pos_list_df, test_pos_list_df, \
-        val_interactions_t, test_interactions_t
+        val_interactions_t, test_interactions_t, val_df, test_df
 
 
 def df_to_graph(train_df, weight):

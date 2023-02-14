@@ -15,3 +15,4 @@ pandas_profiling
 ray
 tqdm
 argparse
+recmetrics

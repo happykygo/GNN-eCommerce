@@ -1,7 +1,7 @@
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
-from utils_v2 import *
-from lightgcn import LightGCN
+from src.utils_v2 import *
+from src.lightgcn import LightGCN
 import yaml
 import argparse
 
@@ -14,15 +14,21 @@ class TrainLightGCN:
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         interaction_matrix = pd.read_csv(self.csv_path)
+        # todo remove later
+        # interaction_matrix = interaction_matrix.rename(columns=({'product_id': 'item_id'}))
+
         if samples:
             interaction_matrix = interaction_matrix.sample(samples)
 
-        train_df, test_df = train_test_split(interaction_matrix, test_size=0.05)
+        train_df, test_df = train_test_split(interaction_matrix, test_size=0.2)
         test_df, val_df = train_test_split(test_df, test_size=0.5)
 
         self.n_users, self.n_items, self.train_df, self.train_pos_list_df, self.val_pos_list_df, \
-            self.test_pos_list_df, self.val_interactions_t, self.test_interactions_t = \
-            prepare_val_test(train_df, val_df, test_df)
+        self.test_pos_list_df, self.val_interactions_t, self.test_interactions_t, val_df, test_df\
+            = prepare_val_test(train_df, val_df, test_df)
+
+        # save_file(train_df, val_df, test_df)
+        # note: item_id in train_df is increased, need to - n_users before use it!!
 
         print("n_users : ", self.n_users, ", n_items : ", self.n_items)
         print("train_df Size  : ", len(self.train_df))
@@ -44,13 +50,12 @@ class TrainLightGCN:
             "LR": 0.005,
             "DECAY": 0.0001,  # reg loss
             "BATCH_SIZE": 1024,  # train mini batch size
-            # "n_neg": 1  # number of negative sample edges per each positive edge
         }
 
         model = LightGCN(self.n_users + self.n_items, tune_config["latent_dim"], tune_config["n_layers"])
         optimizer = torch.optim.Adam(model.parameters(), tune_config["LR"])
 
-        K = 20   # Recall@K
+        K = 20  # Recall@K
         self.train(model, optimizer, EPOCHS=EPOCHS, BATCH_SIZE=tune_config["BATCH_SIZE"], K=K,
                    DECAY=tune_config["DECAY"], checkpoint_dir=self.checkpoints_dir)
 
@@ -90,7 +95,8 @@ class TrainLightGCN:
             pos_items = pos_items.to(self.device)
             neg_items = neg_items.to(self.device)
 
-            bpr_loss, reg_loss, final_loss = self.mini_batch_loop(users, pos_items, neg_items, model, optimizer, BATCH_SIZE, DECAY)
+            bpr_loss, reg_loss, final_loss = self.mini_batch_loop(users, pos_items, neg_items, model, optimizer,
+                                                                  BATCH_SIZE, DECAY)
 
             precision, recall = self.test(model, self.val_pos_list_df, self.val_interactions_t, K)
 
@@ -107,7 +113,7 @@ class TrainLightGCN:
             # save the best model
             if recall > best_recall:
                 best_recall = recall
-                save_model(checkpoint_dir+"/LightGCN_best.pt", model, optimizer, precision, recall, epoch=epoch)
+                save_model(checkpoint_dir + "/LightGCN_best.pt", model, optimizer, precision, recall, epoch=epoch)
 
         return (
             bpr_loss_epoch_list,
@@ -126,7 +132,7 @@ class TrainLightGCN:
         loader = DataLoader(idx, batch_size=batch_size, shuffle=True)
 
         model.train()
-        #for batch_num, batch in enumerate(tqdm(loader)):
+        # for batch_num, batch in enumerate(tqdm(loader)):
         for batch_num, batch in enumerate(loader):
             optimizer.zero_grad()
 
@@ -139,7 +145,8 @@ class TrainLightGCN:
             size = len(batch)
 
             bpr_loss = model.recommendation_loss(out[:size], out[size:], 0) * size
-            reg_loss = regularization_loss(model.embedding.weight, size, batch_usr, batch_pos_items, batch_neg_items, decay)
+            reg_loss = regularization_loss(model.embedding.weight, size, batch_usr, batch_pos_items, batch_neg_items,
+                                           decay)
             loss = bpr_loss + reg_loss
 
             loss.backward()
@@ -154,17 +161,17 @@ class TrainLightGCN:
     def test(self, model, test_pos_list_df, interactions_t, K):
         model.eval()
         with torch.no_grad():
-            embeds = model.get_embedding(self.edge_index, self.edge_weight)
-            final_usr_embed, final_item_embed = torch.split(embeds, [self.n_users, self.n_items])
+            # embeds = model.get_embedding(self.edge_index, self.edge_weight)
+            final_usr_embed, final_item_embed = torch.split(model.embedding.weight, [self.n_users, self.n_items])
             test_topK_recall, test_topK_precision = self.get_metrics(final_usr_embed, final_item_embed,
-                                                                test_pos_list_df, interactions_t, K)
-
+                                                                     test_pos_list_df, interactions_t, K)
         return test_topK_precision, test_topK_recall
 
     def get_metrics(self, user_Embed_wts, item_Embed_wts, test_pos_list_df, interactions_t, K):
         r"""
         Compute Precision@K, Recall@K
         # :param test_u_i_matrix:
+        :param interactions_t:
         :param user_Embed_wts:
         :param item_Embed_wts:
         :param test_pos_list_df:
@@ -172,19 +179,11 @@ class TrainLightGCN:
         :return: Recall@K, Precision@K
         """
         # prepare test set user list mask
-        # test_pos_list_df = test_pos_list_df.sort_values(by=['user_id_idx'])
         users = list(test_pos_list_df['user_id_idx'])
-        #print(f"Test users: {len(users)}")
+        # print(f"Test users: {len(users)}")
 
         # compute the score of aim_user-item pairs
         relevance_score = user_Embed_wts[users] @ item_Embed_wts.t()
-
-        # CPU
-        # mask out training user-item interactions from metric computation
-        # interactions_t = torch.index_select(interactions_t, 0, torch.tensor(users))
-        # print(f"interactions_t shape: {interactions_t.shape}")
-        # interactions_t = interactions_t.to_dense()
-
         relevance_score = relevance_score.cpu()
         masked_relevance_score = torch.mul(relevance_score, (1 - interactions_t))
         # compute top scoring items for each user
@@ -211,14 +210,15 @@ def main(max_num_epochs=20, gpus_per_trial=1):
         config = yaml.safe_load(config_file)
 
     csv_path = config['data']['preprocessed'] + "u_i_weight_0.01_0.1_-0.09.csv"
+    # file 0 -- interaction_matrix.csv
+    # file 1 -- u_i_weight_0.01_0.1_-0.09.csv
     # file 2 -- u_i_weight_0.15_0.35_-0.2.csv
     checkpoint_dir = config['training']['checkpoints_dir']
-    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir)
+    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir, samples=200000)
     train_lightgcn(max_num_epochs, gpus_per_trial)
 
 
 if __name__ == "__main__":
-
     # Construct the argument parser
     ap = argparse.ArgumentParser()
 
@@ -230,4 +230,3 @@ if __name__ == "__main__":
     args = vars(ap.parse_args())
 
     main(args['epochs'], args['gpus'])
-

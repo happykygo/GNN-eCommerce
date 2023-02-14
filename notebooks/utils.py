@@ -88,6 +88,16 @@ def ignor_neg_item_list(train_pos_list_df, val_pos_list_df, test_pos_list_df, n_
     return train_pos_list_df
 
 
+def interact_matrix(train_df, n_users, n_items):
+    i = torch.stack((
+        torch.LongTensor(train_df['user_id_idx'].values),
+        torch.LongTensor(train_df['item_id_idx'].values)
+    ))
+    v = torch.ones((len(train_df)), dtype=torch.float64)
+    interactions_t = torch.sparse.FloatTensor(i, v, (n_users, n_items))
+    return interactions_t
+
+
 def prepare_val_test(train_df, val_df, test_df):
     r"""
     Sync nodes
@@ -107,7 +117,7 @@ def prepare_val_test(train_df, val_df, test_df):
     """
     val_df, test_df = sync_nodes(train_df, val_df, test_df)
     n_users, n_items, train_df, val_df, test_df = relabelling(train_df, val_df, test_df)
-
+    interactions_t = interact_matrix(train_df, n_users, n_items)
     train_df['item_id_idx'] = train_df['item_id_idx'] + n_users
 
     train_pos_list_df = pos_item_list(train_df)
@@ -116,7 +126,7 @@ def prepare_val_test(train_df, val_df, test_df):
 
     train_pos_list_df = ignor_neg_item_list(train_pos_list_df, val_pos_list_df, test_pos_list_df, n_users)
 
-    return n_users, n_items, train_df, train_pos_list_df, val_pos_list_df, test_pos_list_df
+    return n_users, n_items, train_df, train_pos_list_df, val_pos_list_df, test_pos_list_df, interactions_t
 
 
 def df_to_graph(train_df, weight):
@@ -159,9 +169,9 @@ def sample_neg(x, n_neg, n_users, n_itm):
     return neg_list
 
 
-def pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_itm):
+def pos_neg_edge_index(train_pos_list_df, n_users, n_itm):
     r"""Generate random neg_item for each (usr, pos_item) pair
-    example: if n_neg=3
+    example:
     train_df as below:
     user    pos_list
     u1      [1,2,3]
@@ -174,25 +184,22 @@ def pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_itm):
     u1      3       77
     u2      7       4
     u2      8       9
-    u2      7       10
 
     Args:
-        :param n_neg:
         :param train_pos_list_df: (Tensor)
         :param n_users: number of users
         :param n_itm: number of items
-
     Returns:
         users, pos_items, neg_items
 
     """
-    u = [[a]*len(b)*n_neg for a, b in zip(train_pos_list_df.user_id_idx, train_pos_list_df.item_id_idx_list)]
-    u = [item for sublist in u for item in sublist]   # flatten list of list
+    u = [[a]*len(b) for a, b in zip(train_pos_list_df.user_id_idx, train_pos_list_df.item_id_idx_list)]
+    u = [item for sublist in u for item in sublist]
     users = torch.LongTensor(u)
-    p = train_pos_list_df['item_id_idx_list'].apply(lambda x: x * n_neg).tolist()
+    p = train_pos_list_df.item_id_idx_list.values.tolist()
     p = [item for sublist in p for item in sublist]
     pos_items = torch.LongTensor(p)
-    n = [sample_neg(a, n_neg*len(b), n_users, n_itm) for a, b in
+    n = [sample_neg(a, len(b), n_users, n_itm) for a, b in
          zip(train_pos_list_df.ignor_neg_list, train_pos_list_df.item_id_idx_list)]
     n = [item for sublist in n for item in sublist]
     neg_items = torch.LongTensor(n)
@@ -231,7 +238,7 @@ def regularization_loss(init_embed, batch_size, batch_usr, batch_pos, batch_neg,
     return reg_loss * DECAY
 
 
-def train_loop(users, pos_items, neg_items, edge_index, edge_weight, model, optimizer, BATCH_SIZE, log_interval=10):
+def mini_batch_loop(users, pos_items, neg_items, edge_index, edge_weight, model, optimizer, BATCH_SIZE, log_interval=10):
     bpr_loss_batch_list = []
     reg_loss_batch_list = []
     final_loss_batch_list = []
@@ -239,8 +246,6 @@ def train_loop(users, pos_items, neg_items, edge_index, edge_weight, model, opti
     idx = list(range(len(users)))
     random.shuffle(idx)
     loader = DataLoader(idx, batch_size=BATCH_SIZE, shuffle=True)
-
-    dataset_size = len(loader.dataset)
 
     model.train()
     for batch_num, batch in enumerate(tqdm(loader)):
@@ -271,16 +276,6 @@ def train_loop(users, pos_items, neg_items, edge_index, edge_weight, model, opti
         #     print(f"bpr/reg/total loss: {bpr:>7f} {reg:>7f} {loss:>7f}  [{current:>5d}/{dataset_size} users]")
 
     return np.mean(bpr_loss_batch_list), np.mean(reg_loss_batch_list), np.mean(final_loss_batch_list)
-
-
-def interact_matrix(train_df, n_users, n_items):
-    i = torch.stack((
-        torch.LongTensor(train_df['user_id_idx'].values),
-        torch.LongTensor(train_df['item_id_idx'].values)
-    ))
-    v = torch.ones((len(train_df)), dtype=torch.float64)
-    interactions_t = torch.sparse.FloatTensor(i, v, (n_users, n_items))
-    return interactions_t
 
 
 def get_metrics(user_Embed_wts, item_Embed_wts, test_pos_list_df, interactions_t, K):
@@ -334,7 +329,7 @@ def evaluation(model, n_users, n_items, edge_index, edge_weight, test_pos_list_d
     return test_topK_precision, test_topK_recall
 
 
-def train_and_evl(n_users, n_items, n_neg, edge_index, edge_weight, train_pos_list_df, test_pos_list_df, interactions_t,
+def train_and_evl(n_users, n_items, edge_index, edge_weight, train_pos_list_df, test_pos_list_df, interactions_t,
                   model, optimizer, device, EPOCHS=50, BATCH_SIZE=1024, K=20, DECAY=0.0001, checkpoint_dir="", log_interval=10):
 
     interactions_t = interactions_t.to(device)
@@ -351,13 +346,13 @@ def train_and_evl(n_users, n_items, n_neg, edge_index, edge_weight, train_pos_li
     best_recall = 0.0
 
     for epoch in tqdm(range(EPOCHS)):
-        users, pos_items, neg_items = pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_items)
+        users, pos_items, neg_items = pos_neg_edge_index(train_pos_list_df, n_users, n_items)
         users = users.to(device)
         pos_items = pos_items.to(device)
         neg_items = neg_items.to(device)
 
-        bpr_loss, reg_loss, final_loss = train_loop(users, pos_items, neg_items, edge_index, edge_weight, model,
-                                                    optimizer, BATCH_SIZE, log_interval)
+        bpr_loss, reg_loss, final_loss = mini_batch_loop(users, pos_items, neg_items, edge_index, edge_weight, model,
+                                                         optimizer, BATCH_SIZE, log_interval)
 
         precision, recall = evaluation(model, n_users, n_items, edge_index, edge_weight, test_pos_list_df, interactions_t, K)
 
