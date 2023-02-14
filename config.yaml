@@ -8,6 +8,8 @@ data:
 training:
   checkpoints_dir: "model-checkpoints"
   event_type_weights: {"view": 0.01, "cart": 0.1, "remove_from_cart": -0.09, "purchase": 1.0}
+  event_type_weights_v1: {"view": 0.01, "cart": 0.1, "remove_from_cart": -0.09, "purchase": 1.0}
+  event_type_weights_v2: {"view": 0.15, "cart": 0.35, "remove_from_cart": -0.2, "purchase": 1.0}
 
 
 reports:
