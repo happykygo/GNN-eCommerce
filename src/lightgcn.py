@@ -55,13 +55,14 @@ class LightGCN(torch.nn.Module):
         **kwargs (optional): Additional arguments of the underlying
             :class:`~torch_geometric.nn.conv.LGConv` layers.
     """
+
     def __init__(
-        self,
-        num_nodes: int,
-        embedding_dim: int,
-        num_layers: int,
-        alpha: Optional[Union[float, Tensor]] = None,
-        **kwargs,
+            self,
+            num_nodes: int,
+            embedding_dim: int,
+            num_layers: int,
+            alpha: Optional[Union[float, Tensor]] = None,
+            **kwargs,
     ):
         super().__init__()
 
@@ -164,6 +165,17 @@ class LightGCN(torch.nn.Module):
         if dst_index is not None:  # Map local top-indices to original indices.
             top_index = dst_index[top_index.view(-1)].view(*top_index.size())
 
+        return top_index
+
+    def recommendK(self, edge_index, edge_weight, interactions_t,
+                   user_id_list, k: int = 5) -> Tensor:
+        src = dst = self.get_embedding(edge_index, edge_weight)
+        if user_id_list is not None:
+            src = src[user_id_list]
+        pred = src @ dst.t()
+        masked_pred = torch.mul(pred, (1-interactions_t))
+
+        top_index = masked_pred.topk(k, dim=-1).indices
         return top_index
 
     def link_pred_loss(self, pred: Tensor, edge_label: Tensor,

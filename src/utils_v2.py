@@ -95,11 +95,13 @@ def interact_matrix(train_df, n_users, n_items):
     r"""
     create sparse tensor of all user-item interactions
     """
+    df = train_df.loc[train_df['weight'] == 1.0]
+
     i = torch.stack((
-        torch.LongTensor(train_df['user_id_idx'].values),
-        torch.LongTensor(train_df['item_id_idx'].values)
+        torch.LongTensor(df['user_id_idx'].values),
+        torch.LongTensor(df['item_id_idx'].values)
     ))
-    v = torch.ones((len(train_df)), dtype=torch.float32)
+    v = torch.ones((len(df)), dtype=torch.float32)
     interactions_t = torch.sparse.FloatTensor(i, v, (n_users, n_items))
     return interactions_t
 
@@ -125,8 +127,8 @@ def prepare_val_test(train_df, val_df, test_df):
     n_users, n_items, train_df, val_df, test_df = relabelling(train_df, val_df, test_df)
 
     interactions_t = interact_matrix(train_df, n_users, n_items)
-    train_df['item_id_idx'] = train_df['item_id_idx'] + n_users
 
+    train_df['item_id_idx'] = train_df['item_id_idx'] + n_users
     train_pos_list_df = pos_item_list(train_df)
     val_pos_list_df = pos_item_list(val_df).sort_values(by=['user_id_idx'])
     test_pos_list_df = pos_item_list(test_df).sort_values(by=['user_id_idx'])
@@ -134,7 +136,6 @@ def prepare_val_test(train_df, val_df, test_df):
     # prepare val/ test set user list mask
     val_users = list(val_pos_list_df['user_id_idx'])
     test_users = list(test_pos_list_df['user_id_idx'])
-
     # mask out training user-item interactions from metric computation
     val_interactions_t = torch.index_select(interactions_t, 0, torch.tensor(val_users)).to_dense()
     test_interactions_t = torch.index_select(interactions_t, 0, torch.tensor(test_users)).to_dense()

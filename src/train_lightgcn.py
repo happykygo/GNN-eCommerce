@@ -1,3 +1,4 @@
+import pandas as pd
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from src.utils_v2 import *
@@ -23,22 +24,22 @@ class TrainLightGCN:
         train_df, test_df = train_test_split(interaction_matrix, test_size=0.2)
         test_df, val_df = train_test_split(test_df, test_size=0.5)
 
-        self.n_users, self.n_items, self.train_df, self.train_pos_list_df, self.val_pos_list_df, \
+        self.n_users, self.n_items, train_df, self.train_pos_list_df, self.val_pos_list_df, \
         self.test_pos_list_df, self.val_interactions_t, self.test_interactions_t, val_df, test_df\
             = prepare_val_test(train_df, val_df, test_df)
 
-        # save_file(train_df, val_df, test_df)
-        # note: item_id in train_df is increased, need to - n_users before use it!!
-
         print("n_users : ", self.n_users, ", n_items : ", self.n_items)
-        print("train_df Size  : ", len(self.train_df))
+        print("train_df Size  : ", len(train_df))
         print("val_pos_list_df Size : ", len(self.val_pos_list_df))
         print("test_pos_list_df Size : ", len(self.test_pos_list_df))
 
         self.edge_index, self.edge_weight = df_to_graph(train_df, True)
-
         self.edge_index = self.edge_index.to(self.device)
         self.edge_weight = self.edge_weight.to(self.device)
+
+        train_df.to_csv(self.checkpoints_dir + "processed_train.csv")
+        val_df.to_csv(self.checkpoints_dir + "processed_val.csv")
+        test_df.to_csv(self.checkpoints_dir + "processed_test.csv")
 
     def __call__(self, *args, **kwargs):
 
@@ -59,7 +60,7 @@ class TrainLightGCN:
         self.train(model, optimizer, EPOCHS=EPOCHS, BATCH_SIZE=tune_config["BATCH_SIZE"], K=K,
                    DECAY=tune_config["DECAY"], checkpoint_dir=self.checkpoints_dir)
 
-        best_model = torch.load(self.checkpoints_dir + "/LightGCN_best.pt")
+        best_model = torch.load(self.checkpoints_dir + "LightGCN_best.pt")
         best_epoch = best_model['epoch']
         best_val_precision = best_model['precision']
         best_val_recall = best_model['recall']
@@ -113,7 +114,7 @@ class TrainLightGCN:
             # save the best model
             if recall > best_recall:
                 best_recall = recall
-                save_model(checkpoint_dir + "/LightGCN_best.pt", model, optimizer, precision, recall, epoch=epoch)
+                save_model(checkpoint_dir + "LightGCN_best.pt", model, optimizer, precision, recall, epoch=epoch)
 
         return (
             bpr_loss_epoch_list,
@@ -161,8 +162,8 @@ class TrainLightGCN:
     def test(self, model, test_pos_list_df, interactions_t, K):
         model.eval()
         with torch.no_grad():
-            # embeds = model.get_embedding(self.edge_index, self.edge_weight)
-            final_usr_embed, final_item_embed = torch.split(model.embedding.weight, [self.n_users, self.n_items])
+            embeds = model.get_embedding(self.edge_index, self.edge_weight)
+            final_usr_embed, final_item_embed = torch.split(embeds, [self.n_users, self.n_items])
             test_topK_recall, test_topK_precision = self.get_metrics(final_usr_embed, final_item_embed,
                                                                      test_pos_list_df, interactions_t, K)
         return test_topK_precision, test_topK_recall
