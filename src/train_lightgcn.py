@@ -15,7 +15,7 @@ class TrainLightGCN:
 
         interaction_matrix = pd.read_csv(self.csv_path)
         # todo remove later
-        # interaction_matrix = interaction_matrix.rename(columns=({'product_id': 'item_id'}))
+        interaction_matrix = interaction_matrix.rename(columns=({'product_id': 'item_id'}))
 
         if samples:
             interaction_matrix = interaction_matrix.sample(samples)
@@ -209,7 +209,7 @@ def main(max_num_epochs=20, gpus_per_trial=1):
     with open("config.yaml") as config_file:
         config = yaml.safe_load(config_file)
 
-    csv_path = config['data']['preprocessed'] + "u_i_weight_0.01_0.1_-0.09.csv"
+    csv_path = config['data']['preprocessed'] + "interaction_matrix.csv"
     # file 0 -- interaction_matrix.csv
     # file 1 -- u_i_weight_0.01_0.1_-0.09.csv
     # file 2 -- u_i_weight_0.15_0.35_-0.2.csv
