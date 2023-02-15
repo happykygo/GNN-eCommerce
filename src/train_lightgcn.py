@@ -163,7 +163,7 @@ class TrainLightGCN:
         with torch.no_grad():
             embeds = model.get_embedding(self.edge_index, self.edge_weight)
             final_usr_embed, final_item_embed = torch.split(embeds, [self.n_users, self.n_items])
-            test_topK_recall, test_topK_precision = self.get_metrics(final_usr_embed, final_item_embed,
+            test_topK_recall, test_topK_precision, _ = self.get_metrics(final_usr_embed, final_item_embed,
                                                                      test_pos_list_df, interactions_t, K)
         return test_topK_precision, test_topK_recall
 
@@ -200,9 +200,9 @@ class TrainLightGCN:
                                       zip(metrics_df.item_id_idx_list, metrics_df.top_rlvnt_itm)]  # TP
 
         metrics_df['recall'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / len(x['item_id_idx_list']), axis=1)
-        metrics_df['precision'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / K, axis=1)
+        metrics_df['precision'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / min(len(x['item_id_idx_list']), K), axis=1)
 
-        return metrics_df['recall'].mean(), metrics_df['precision'].mean()
+        return metrics_df['recall'].mean(), metrics_df['precision'].mean(), metrics_df
 
 
 def main(max_num_epochs=20, gpus_per_trial=1):
