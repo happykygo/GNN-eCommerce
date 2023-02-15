@@ -167,9 +167,10 @@ class LightGCN(torch.nn.Module):
 
         return top_index
 
-    def recommendK(self, edge_index, edge_weight, interactions_t,
+    def recommendK(self, edge_index, edge_weight, n_users, n_items, interactions_t,
                    user_id_list, k: int = 5) -> Tensor:
-        src = dst = self.get_embedding(edge_index, edge_weight)
+        embeds = self.get_embedding(edge_index, edge_weight)
+        src, dst = torch.split(embeds, [n_users, n_items])
         if user_id_list is not None:
             src = src[user_id_list]
         pred = src @ dst.t()
