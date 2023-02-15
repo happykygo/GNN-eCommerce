@@ -1,4 +1,3 @@
-import pandas as pd
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from src.utils_v2 import *
@@ -21,7 +20,7 @@ class TrainLightGCN:
         if samples:
             interaction_matrix = interaction_matrix.sample(samples)
 
-        train_df, test_df = train_test_split(interaction_matrix, test_size=0.2)
+        train_df, test_df = train_test_split(interaction_matrix, test_size=0.05)
         test_df, val_df = train_test_split(test_df, test_size=0.5)
 
         self.n_users, self.n_items, train_df, self.train_pos_list_df, self.val_pos_list_df, \
@@ -60,7 +59,7 @@ class TrainLightGCN:
         self.train(model, optimizer, EPOCHS=EPOCHS, BATCH_SIZE=tune_config["BATCH_SIZE"], K=K,
                    DECAY=tune_config["DECAY"], checkpoint_dir=self.checkpoints_dir)
 
-        best_model = torch.load(self.checkpoints_dir + "LightGCN_best.pt")
+        best_model = torch.load(self.checkpoints_dir + "/LightGCN_best.pt")
         best_epoch = best_model['epoch']
         best_val_precision = best_model['precision']
         best_val_recall = best_model['recall']
@@ -114,7 +113,7 @@ class TrainLightGCN:
             # save the best model
             if recall > best_recall:
                 best_recall = recall
-                save_model(checkpoint_dir + "LightGCN_best.pt", model, optimizer, precision, recall, epoch=epoch)
+                save_model(checkpoint_dir + "/LightGCN_best.pt", model, optimizer, precision, recall, epoch=epoch)
 
         return (
             bpr_loss_epoch_list,
@@ -215,7 +214,7 @@ def main(max_num_epochs=20, gpus_per_trial=1):
     # file 1 -- u_i_weight_0.01_0.1_-0.09.csv
     # file 2 -- u_i_weight_0.15_0.35_-0.2.csv
     checkpoint_dir = config['training']['checkpoints_dir']
-    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir, samples=200000)
+    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir)
     train_lightgcn(max_num_epochs, gpus_per_trial)
 
 
