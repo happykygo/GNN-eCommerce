@@ -217,6 +217,17 @@ def pos_neg_edge_index(train_pos_list_df, n_itm):
     return users, pos_items, neg_items
 
 
+def batch_loader(train_pos_list_df, batch_size, n_items):
+    users = random.sample(train_pos_list_df.user_id_idx.tolist(), batch_size)
+    users_df = pd.DataFrame(users, columns=['users'])
+
+    batch_df = pd.merge(train_pos_list_df, users_df, how='right', left_on='user_id_idx', right_on='users')
+    p = batch_df.item_id_idx_list.apply(lambda x: random.choice(x)).values
+    n = batch_df.ignor_neg_list.apply(lambda x: sample_neg(x, n_items)).values
+
+    return torch.LongTensor(list(users)), torch.LongTensor(list(p)), torch.LongTensor(list(n))
+
+
 def batch_pos_neg_edges(users, pos_items, neg_items):
     r"""Return (user+user, pos+neg) edge labels
     """
