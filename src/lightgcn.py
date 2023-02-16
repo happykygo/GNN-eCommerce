@@ -1,5 +1,6 @@
 from typing import Optional, Union
 
+import pandas as pd
 import torch
 import torch.nn.functional as F
 from torch import Tensor
@@ -171,13 +172,24 @@ class LightGCN(torch.nn.Module):
                    user_id_list, k: int = 5) -> Tensor:
         embeds = self.get_embedding(edge_index, edge_weight)
         src, dst = torch.split(embeds, [n_users, n_items])
-        if user_id_list is not None:
-            src = src[user_id_list]
-        pred = src @ dst.t()
+        pred = src[user_id_list] @ dst.t()
+        # pred = pred.cpu()
         masked_pred = torch.mul(pred, (1-interactions_t))
 
         top_index = masked_pred.topk(k, dim=-1).indices
-        return top_index
+        top_index_df = pd.DataFrame(top_index.numpy())
+        top_index_df['top_rlvnt_itm'] = top_index_df.values.tolist()
+        top_index_df['user_ID'] = user_id_list
+        top_index_df = top_index_df[['user_ID', 'top_rlvnt_itm']]
+        return top_index_df
+
+    def MARK_MAPK(self, test_pos_list_df, top_index_df, k):
+        metrics = pd.merge(test_pos_list_df, top_index_df, how='left', left_on='user_id_idx', right_on='user_ID')
+        metrics['overlap_item'] = [list(set(a).intersection(b)) for a, b in zip(metrics.item_id_idx_list, metrics.top_rlvnt_itm)]  # TP
+        metrics['recall'] = metrics.apply(lambda x: len(x['overlap_item']) / len(x['item_id_idx_list']), axis=1)
+        metrics['precision'] = metrics.apply(lambda x: len(x['overlap_item']) / min(len(x['item_id_idx_list']), k), axis=1)
+        return metrics['recall'].mean(), metrics['precision'].mean(), metrics
+
 
     def link_pred_loss(self, pred: Tensor, edge_label: Tensor,
                        **kwargs) -> Tensor:

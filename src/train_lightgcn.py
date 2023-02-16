@@ -1,3 +1,4 @@
+import torch
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from src.utils_v2 import *
@@ -24,7 +25,7 @@ class TrainLightGCN:
         test_df, val_df = train_test_split(test_df, test_size=0.5)
 
         self.n_users, self.n_items, train_df, self.train_pos_list_df, self.val_pos_list_df, \
-        self.test_pos_list_df, self.val_interactions_t, self.test_interactions_t, val_df, test_df\
+        self.test_pos_list_df, self.val_interactions_t, self.test_interactions_t, val_df, test_df \
             = prepare_val_test(train_df, val_df, test_df)
 
         print("n_users : ", self.n_users, ", n_items : ", self.n_items)
@@ -70,7 +71,8 @@ class TrainLightGCN:
         # Evaluate model using test set
         test_p, test_recall = self.test(model, self.test_pos_list_df, self.test_interactions_t, K)
 
-        print(f"Best epoch ({best_epoch}): Val Precision@{K}: {best_val_precision:>7f}, Recall@{K}: {best_val_recall:>7f}")
+        print(
+            f"Best epoch ({best_epoch}): Val Precision@{K}: {best_val_precision:>7f}, Recall@{K}: {best_val_recall:>7f}")
         print(f"Test Precision@{K}: {test_p:>7f}, Recall@{K}: {test_recall:>7f}")
 
     def train(self, model, optimizer, EPOCHS=50, BATCH_SIZE=1024, K=20, DECAY=0.0001, checkpoint_dir=""):
@@ -87,10 +89,10 @@ class TrainLightGCN:
 
         print(f"Begin training at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-        #for epoch in tqdm(range(EPOCHS)):
+        # for epoch in tqdm(range(EPOCHS)):
         for epoch in range(EPOCHS):
             users, pos_items, neg_items = pos_neg_edge_index(self.train_pos_list_df, self.n_users, self.n_items)
-            #print(f"Total train set size = {len(users)}")
+            # print(f"Total train set size = {len(users)}")
             users = users.to(self.device)
             pos_items = pos_items.to(self.device)
             neg_items = neg_items.to(self.device)
@@ -158,13 +160,19 @@ class TrainLightGCN:
 
         return np.mean(bpr_loss_batch_list), np.mean(reg_loss_batch_list), np.mean(final_loss_batch_list)
 
-    def test(self, model, test_pos_list_df, interactions_t, K):
+    def test(self, model, test_pos_list_df, interactions_t, k):
         model.eval()
         with torch.no_grad():
             embeds = model.get_embedding(self.edge_index, self.edge_weight)
             final_usr_embed, final_item_embed = torch.split(embeds, [self.n_users, self.n_items])
             test_topK_recall, test_topK_precision, _ = self.get_metrics(final_usr_embed, final_item_embed,
-                                                                     test_pos_list_df, interactions_t, K)
+                                                                        test_pos_list_df, interactions_t, k)
+        # user_id_list = list(test_pos_list_df['user_id_idx'])
+        # with torch.no_grad():
+        #     top_index_df = model.recommendK(self.edge_index, self.edge_weight, self.n_users, self.n_items,
+        #                                     interactions_t, user_id_list, k)
+        #     topK_recall, topK_precision, metrics = model.MARK_MAPK(test_pos_list_df, top_index_df, k)
+
         return test_topK_precision, test_topK_recall
 
     def get_metrics(self, user_Embed_wts, item_Embed_wts, test_pos_list_df, interactions_t, K):
@@ -200,7 +208,8 @@ class TrainLightGCN:
                                       zip(metrics_df.item_id_idx_list, metrics_df.top_rlvnt_itm)]  # TP
 
         metrics_df['recall'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / len(x['item_id_idx_list']), axis=1)
-        metrics_df['precision'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / min(len(x['item_id_idx_list']), K), axis=1)
+        metrics_df['precision'] = metrics_df.apply(
+            lambda x: len(x['intrsctn_itm']) / min(len(x['item_id_idx_list']), K), axis=1)
 
         return metrics_df['recall'].mean(), metrics_df['precision'].mean(), metrics_df
 
