@@ -185,7 +185,7 @@ def sample_neg(x, n_neg, n_users, n_itm):
     return neg_list
 
 
-def pos_neg_edge_index(train_pos_list_df, n_users, n_itm):
+def pos_neg_edge_index(train_pos_list_df, n_users, n_itm, n_neg):
     r"""Generate random neg_item for each (usr, pos_item) pair
     example:
     train_pos_list_df as below:
@@ -209,13 +209,13 @@ def pos_neg_edge_index(train_pos_list_df, n_users, n_itm):
         users, pos_items, neg_items
 
     """
-    u = [[a]*len(b) for a, b in zip(train_pos_list_df.user_id_idx, train_pos_list_df.item_id_idx_list)]
+    u = [[a]*len(b)*n_neg for a, b in zip(train_pos_list_df.user_id_idx, train_pos_list_df.item_id_idx_list)]
     u = [item for sublist in u for item in sublist]
     users = torch.LongTensor(u)
-    p = train_pos_list_df.item_id_idx_list.values.tolist()
+    p = train_pos_list_df['item_id_idx_list'].apply(lambda x: x * n_neg).tolist()
     p = [item for sublist in p for item in sublist]
     pos_items = torch.LongTensor(p)
-    n = [sample_neg(a, len(b), n_users, n_itm) for a, b in
+    n = [sample_neg(a, n_neg*len(b), n_users, n_itm) for a, b in
          zip(train_pos_list_df.ignor_neg_list, train_pos_list_df.item_id_idx_list)]
     n = [item for sublist in n for item in sublist]
     neg_items = torch.LongTensor(n)

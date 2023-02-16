@@ -21,11 +21,11 @@ class TrainLightGCN:
         if samples:
             interaction_matrix = interaction_matrix.sample(samples)
 
-        train_df, test_df = train_test_split(interaction_matrix, test_size=0.05)
+        train_df, test_df = train_test_split(interaction_matrix, test_size=0.1)
         test_df, val_df = train_test_split(test_df, test_size=0.5)
 
         self.n_users, self.n_items, train_df, self.train_pos_list_df, self.val_pos_list_df, \
-        self.test_pos_list_df, self.val_interactions_t, self.test_interactions_t, val_df, test_df \
+            self.test_pos_list_df, self.val_interactions_t, self.test_interactions_t, val_df, test_df \
             = prepare_val_test(train_df, val_df, test_df)
 
         print("n_users : ", self.n_users, ", n_items : ", self.n_items)
@@ -91,7 +91,7 @@ class TrainLightGCN:
 
         # for epoch in tqdm(range(EPOCHS)):
         for epoch in range(EPOCHS):
-            users, pos_items, neg_items = pos_neg_edge_index(self.train_pos_list_df, self.n_users, self.n_items)
+            users, pos_items, neg_items = pos_neg_edge_index(self.train_pos_list_df, self.n_users, self.n_items, 1)
             # print(f"Total train set size = {len(users)}")
             users = users.to(self.device)
             pos_items = pos_items.to(self.device)
