@@ -129,8 +129,7 @@ class TrainLightGCN:
 
     # def mini_batch_loop(self, users, pos_items, neg_items, model, optimizer, batch_size, decay):
     def mini_batch_loop(self, model, optimizer, batch_size, decay):
-        n_batch = int(self.train_size / batch_size)
-        print('number of batches: ', n_batch)
+        n_batch = int(self.train_size / (batch_size*10))
         bpr_loss_batch_list = []
         reg_loss_batch_list = []
         final_loss_batch_list = []
