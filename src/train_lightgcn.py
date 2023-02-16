@@ -16,7 +16,7 @@ class TrainLightGCN:
 
         interaction_matrix = pd.read_csv(self.csv_path)
         # todo remove later
-        interaction_matrix = interaction_matrix.rename(columns=({'product_id': 'item_id'}))
+        # interaction_matrix = interaction_matrix.rename(columns=({'product_id': 'item_id'}))
 
         if samples:
             interaction_matrix = interaction_matrix.sample(samples)
@@ -130,6 +130,7 @@ class TrainLightGCN:
     # def mini_batch_loop(self, users, pos_items, neg_items, model, optimizer, batch_size, decay):
     def mini_batch_loop(self, model, optimizer, batch_size, decay):
         n_batch = int(self.train_size / batch_size)
+        print('number of batches: ', n_batch)
         bpr_loss_batch_list = []
         reg_loss_batch_list = []
         final_loss_batch_list = []
@@ -144,7 +145,7 @@ class TrainLightGCN:
         for batch_idx in range(n_batch):
             optimizer.zero_grad()
 
-            users, pos_items, neg_items = batch_loader(self.train_pos_list_df, batch_size, self.n_items)
+            users, pos_items, neg_items = batch_loader(self.train_pos_list_df, batch_size, self.n_users, self.n_items)
             users = users.to(self.device)
             pos_items = pos_items.to(self.device)
             neg_items = neg_items.to(self.device)
