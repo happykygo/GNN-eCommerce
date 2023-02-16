@@ -168,24 +168,21 @@ def df_to_graph(train_df, weight):
     return graph_edge_index
 
 
-def sample_neg(x, n_neg, n_users, n_itm):
+def sample_neg(x, n_itm):
     """
     Need to add logic
     :param x:
-    :param n_neg:
     :param n_users:
     :param n_itm:
     :return:
     """
-    neg_list = list()
-    while len(neg_list) < n_neg:
-        neg_id = random.randint(0, n_itm-1) + n_users
+    while True:
+        neg_id = random.randint(0, n_itm-1)
         if neg_id not in x:
-            neg_list.append(neg_id)
-    return neg_list
+            return neg_id
 
 
-def pos_neg_edge_index(train_pos_list_df, n_users, n_itm):
+def pos_neg_edge_index(train_pos_list_df, n_itm):
     r"""Generate random neg_item for each (usr, pos_item) pair
     example:
     train_pos_list_df as below:
@@ -209,15 +206,12 @@ def pos_neg_edge_index(train_pos_list_df, n_users, n_itm):
         users, pos_items, neg_items
 
     """
-    u = [[a]*len(b) for a, b in zip(train_pos_list_df.user_id_idx, train_pos_list_df.item_id_idx_list)]
-    u = [item for sublist in u for item in sublist]
-    users = torch.LongTensor(u)
-    p = train_pos_list_df.item_id_idx_list.values.tolist()
-    p = [item for sublist in p for item in sublist]
+    users = torch.LongTensor(train_pos_list_df.user_id_idx.values.tolist())
+
+    p = train_pos_list_df.item_id_idx_list.apply(lambda x: random.choice(x)).values
     pos_items = torch.LongTensor(p)
-    n = [sample_neg(a, len(b), n_users, n_itm) for a, b in
-         zip(train_pos_list_df.ignor_neg_list, train_pos_list_df.item_id_idx_list)]
-    n = [item for sublist in n for item in sublist]
+
+    n = train_pos_list_df.ignor_neg_list.apply(lambda x: sample_neg(x, n_itm)).values
     neg_items = torch.LongTensor(n)
 
     return users, pos_items, neg_items

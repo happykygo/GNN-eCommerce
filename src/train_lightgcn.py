@@ -91,7 +91,7 @@ class TrainLightGCN:
 
         # for epoch in tqdm(range(EPOCHS)):
         for epoch in range(EPOCHS):
-            users, pos_items, neg_items = pos_neg_edge_index(self.train_pos_list_df, self.n_users, self.n_items)
+            users, pos_items, neg_items = pos_neg_edge_index(self.train_pos_list_df, self.n_items)
             # print(f"Total train set size = {len(users)}")
             users = users.to(self.device)
             pos_items = pos_items.to(self.device)
@@ -208,8 +208,7 @@ class TrainLightGCN:
                                       zip(metrics_df.item_id_idx_list, metrics_df.top_rlvnt_itm)]  # TP
 
         metrics_df['recall'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / len(x['item_id_idx_list']), axis=1)
-        metrics_df['precision'] = metrics_df.apply(
-            lambda x: len(x['intrsctn_itm']) / min(len(x['item_id_idx_list']), K), axis=1)
+        metrics_df['precision'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / K, axis=1)
 
         return metrics_df['recall'].mean(), metrics_df['precision'].mean(), metrics_df
 
@@ -218,12 +217,12 @@ def main(max_num_epochs=20, gpus_per_trial=1):
     with open("config.yaml") as config_file:
         config = yaml.safe_load(config_file)
 
-    csv_path = config['data']['preprocessed'] + "interaction_matrix.csv"
+    csv_path = config['data']['preprocessed'] + "u_i_weight_0.01_0.1_-0.09.csv"
     # file 0 -- interaction_matrix.csv
     # file 1 -- u_i_weight_0.01_0.1_-0.09.csv
     # file 2 -- u_i_weight_0.15_0.35_-0.2.csv
     checkpoint_dir = config['training']['checkpoints_dir']
-    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir)
+    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir, samples=200000)
     train_lightgcn(max_num_epochs, gpus_per_trial)
 
 
