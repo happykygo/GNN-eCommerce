@@ -173,7 +173,7 @@ class LightGCN(torch.nn.Module):
         embeds = self.get_embedding(edge_index, edge_weight)
         src, dst = torch.split(embeds, [n_users, n_items])
         pred = src[user_id_list] @ dst.t()
-        # pred = pred.cpu()
+        pred = pred.cpu()
         masked_pred = torch.mul(pred, (1-interactions_t))
 
         top_index = masked_pred.topk(k, dim=-1).indices
@@ -187,8 +187,8 @@ class LightGCN(torch.nn.Module):
         metrics = pd.merge(test_pos_list_df, top_index_df, how='left', left_on='user_id_idx', right_on='user_ID')
         metrics['overlap_item'] = [list(set(a).intersection(b)) for a, b in zip(metrics.item_id_idx_list, metrics.top_rlvnt_itm)]  # TP
         metrics['recall'] = metrics.apply(lambda x: len(x['overlap_item']) / len(x['item_id_idx_list']), axis=1)
-        metrics['precision'] = metrics.apply(lambda x: len(x['overlap_item']) / min(len(x['item_id_idx_list']), k), axis=1)
-        return metrics['recall'].mean(), metrics['precision'].mean(), metrics
+        metrics['precision'] = metrics.apply(lambda x: len(x['overlap_item']) / k, axis=1)
+        return metrics['precision'].mean(), metrics['recall'].mean(), metrics
 
 
     def link_pred_loss(self, pred: Tensor, edge_label: Tensor,
