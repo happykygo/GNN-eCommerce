@@ -1,4 +1,3 @@
-import torch
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from src.utils_v2 import *
@@ -15,8 +14,6 @@ class TrainLightGCN:
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         interaction_matrix = pd.read_csv(self.csv_path)
-        # todo remove later
-        # interaction_matrix = interaction_matrix.rename(columns=({'product_id': 'item_id'}))
 
         if samples:
             interaction_matrix = interaction_matrix.sample(samples)
@@ -93,15 +90,6 @@ class TrainLightGCN:
 
         # for epoch in tqdm(range(EPOCHS)):
         for epoch in range(EPOCHS):
-            # users, pos_items, neg_items = pos_neg_edge_index(self.train_pos_list_df, self.n_items)
-
-            # print(f"Total train set size = {len(users)}")
-            # users = users.to(self.device)
-            # pos_items = pos_items.to(self.device)
-            # neg_items = neg_items.to(self.device)
-
-            # bpr_loss, reg_loss, final_loss = self.mini_batch_loop(users, pos_items, neg_items, model, optimizer,
-            #                                                       BATCH_SIZE, DECAY)
             bpr_loss, reg_loss, final_loss = self.mini_batch_loop(model, optimizer, BATCH_SIZE, DECAY)
 
             precision, recall, _ = self.test(model, self.val_pos_list_df, self.val_interactions_t, K)
@@ -128,20 +116,13 @@ class TrainLightGCN:
             recall_epoch_list,
             precision_epoch_list)
 
-    # def mini_batch_loop(self, users, pos_items, neg_items, model, optimizer, batch_size, decay):
     def mini_batch_loop(self, model, optimizer, batch_size, decay):
-        n_batch = int(self.train_size / (batch_size*10))
+        n_batch = int(self.train_size / (batch_size*20))
         bpr_loss_batch_list = []
         reg_loss_batch_list = []
         final_loss_batch_list = []
 
-        # idx = list(range(len(users)))
-        # random.shuffle(idx)
-        # loader = DataLoader(idx, batch_size=batch_size, shuffle=True)
-
         model.train()
-        # for batch_num, batch in enumerate(tqdm(loader)):
-        # for batch_num, batch in enumerate(loader):
         for batch_idx in range(n_batch):
             optimizer.zero_grad()
 
@@ -149,10 +130,6 @@ class TrainLightGCN:
             users = users.to(self.device)
             pos_items = pos_items.to(self.device)
             neg_items = neg_items.to(self.device)
-
-            # batch_usr = users[batch]
-            # batch_pos_items = pos_items[batch]
-            # batch_neg_items = neg_items[batch]
 
             batch_pos_neg_labels = batch_pos_neg_edges(users, pos_items, neg_items)
             out = model(self.edge_index, batch_pos_neg_labels, self.edge_weight)
@@ -174,59 +151,12 @@ class TrainLightGCN:
 
     def test(self, model, test_pos_list_df, interactions_t, k):
         model.eval()
-
-        # with torch.no_grad():
-        #     embeds = model.get_embedding(self.edge_index, self.edge_weight)
-        #     final_usr_embed, final_item_embed = torch.split(embeds, [self.n_users, self.n_items])
-        #     test_topK_recall, test_topK_precision, _ = self.get_metrics(final_usr_embed, final_item_embed,
-        #                                                                 test_pos_list_df, interactions_t, k)
-
         user_id_list = list(test_pos_list_df['user_id_idx'])
         with torch.no_grad():
             top_index_df = model.recommendK(self.edge_index, self.edge_weight, self.n_users, self.n_items,
                                             interactions_t, user_id_list, k)
             topK_precision, topK_recall, metrics = model.MARK_MAPK(test_pos_list_df, top_index_df, k)
-
-        return topK_precision, topK_recall, metrics  # test_topK_precision, test_topK_recall
-
-
-    # def get_metrics(self, user_Embed_wts, item_Embed_wts, test_pos_list_df, interactions_t, K):
-    #     r"""
-    #     Compute Precision@K, Recall@K
-    #     # :param test_u_i_matrix:
-    #     :param interactions_t:
-    #     :param user_Embed_wts:
-    #     :param item_Embed_wts:
-    #     :param test_pos_list_df:
-    #     :param K:
-    #     :return: Recall@K, Precision@K
-    #     """
-    #     # prepare test set user list mask
-    #     users = list(test_pos_list_df['user_id_idx'])
-    #     # print(f"Test users: {len(users)}")
-    #
-    #     # compute the score of aim_user-item pairs
-    #     relevance_score = user_Embed_wts[users] @ item_Embed_wts.t()
-    #     relevance_score = relevance_score.cpu()
-    #     masked_relevance_score = torch.mul(relevance_score, (1 - interactions_t))
-    #     # compute top scoring items for each user
-    #     topk_relevance_indices = torch.topk(masked_relevance_score, K).indices
-    #     topk_relevance_indices_df = pd.DataFrame(topk_relevance_indices.numpy())
-    #     topk_relevance_indices_df['top_rlvnt_itm'] = topk_relevance_indices_df.values.tolist()
-    #     topk_relevance_indices_df['user_ID'] = users
-    #     topk_relevance_indices_df = topk_relevance_indices_df[['user_ID', 'top_rlvnt_itm']]
-    #
-    #     # measure overlap between recommended (top-K) and held-out user-item interactions
-    #     metrics_df = pd.merge(test_pos_list_df, topk_relevance_indices_df,
-    #                           how='left', left_on='user_id_idx', right_on='user_ID')
-    #     metrics_df['intrsctn_itm'] = [list(set(a).intersection(b)) for a, b in
-    #                                   zip(metrics_df.item_id_idx_list, metrics_df.top_rlvnt_itm)]  # TP
-    #
-    #     metrics_df['recall'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / len(x['item_id_idx_list']), axis=1)
-    #     metrics_df['precision'] = metrics_df.apply(
-    #         lambda x: len(x['intrsctn_itm']) / K, axis=1)
-    #
-    #     return metrics_df['recall'].mean(), metrics_df['precision'].mean(), metrics_df
+        return topK_precision, topK_recall, metrics
 
 
 def main(max_num_epochs=20, gpus_per_trial=1):
@@ -238,7 +168,7 @@ def main(max_num_epochs=20, gpus_per_trial=1):
     # file 1 -- u_i_weight_0.01_0.1_-0.09.csv
     # file 2 -- u_i_weight_0.15_0.35_-0.2.csv
     checkpoint_dir = config['training']['checkpoints_dir']
-    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir, samples=200000)
+    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir, samples=300000)
     train_lightgcn(max_num_epochs, gpus_per_trial)
 
 

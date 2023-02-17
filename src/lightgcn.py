@@ -190,7 +190,6 @@ class LightGCN(torch.nn.Module):
         metrics['precision'] = metrics.apply(lambda x: len(x['overlap_item']) / k, axis=1)
         return metrics['precision'].mean(), metrics['recall'].mean(), metrics
 
-
     def link_pred_loss(self, pred: Tensor, edge_label: Tensor,
                        **kwargs) -> Tensor:
         r"""Computes the model loss for a link prediction objective via the
