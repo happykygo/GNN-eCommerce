@@ -1,4 +1,3 @@
-from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from src.utils_v2 import *
 from src.lightgcn import LightGCN
@@ -168,7 +167,7 @@ def main(max_num_epochs=20, gpus_per_trial=1):
     # file 1 -- u_i_weight_0.01_0.1_-0.09.csv
     # file 2 -- u_i_weight_0.15_0.35_-0.2.csv
     checkpoint_dir = config['training']['checkpoints_dir']
-    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir, samples=300000)
+    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir)
     train_lightgcn(max_num_epochs, gpus_per_trial)
 
 
