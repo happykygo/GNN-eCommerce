@@ -23,7 +23,7 @@ class InferenceLightGCN:
         # note: item_id in train_df need to -n_users before use it!!
         train_df['item_id_idx'] = train_df['item_id_idx'] - self.n_users
         self.combined = pd.concat([train_df, test_df, val_df], ignore_index=True)
-        self.interactions_t = interact_matrix(self.combined, self.n_users, self.n_items)
+        self.interactions_t = interact_matrix(self.combined, self.n_users, self.n_items)  # keep in cpu
 
         self.test_model = LightGCN(self.n_users + self.n_items, 80, 3)
         self.test_model.load_state_dict(best_model['model_state_dict'])
@@ -38,8 +38,10 @@ class InferenceLightGCN:
         df = self.combined
         df = df.loc[(df['user_id_idx'].isin(user_id_list))]
         print(f"Real data: \n {df}")
-        return self.test_model.recommendK(self.edge_index, self.edge_weight, self.n_users, self.n_items,
+        result_df = self.test_model.recommendK(self.edge_index, self.edge_weight, self.n_users, self.n_items,
                                           test_interactions_t, user_id_list, k)
+        return result_df
+
 
 
 def main():
@@ -49,13 +51,13 @@ def main():
     checkpoint_dir = config['training']['checkpoints_dir']+'2023-02-15_060043/'
     inferenceModel = InferenceLightGCN(checkpoint_dir, True)
 
-    target_users = list(inferenceModel.users_list['user_id_idx'].sample(1))
+    # target_users = list(inferenceModel.users_list['user_id_idx'].sample(1))
     # Rec for purchased user
-    # target_users = list(inferenceModel.p_user_list['user_id_idx'].sample(1))
+    target_users = list(inferenceModel.p_user_list['user_id_idx'].sample(1))
 
-    top_index = inferenceModel.recommendation(target_users, k=5)
+    top_index = inferenceModel.recommendation(target_users, k=8)
 
-    print(f'Target users are : {target_users}; \nRecommendation for user: {top_index}')
+    print(f'Target users are : {target_users}; \nRecommendation for user: \n {top_index.to_string()}')
 
 
 if __name__ == "__main__":
@@ -67,3 +69,4 @@ if __name__ == "__main__":
     #                 help="GPUs per trial")
     # args = vars(ap.parse_args())
     main()
+

@@ -30,6 +30,7 @@ class TrainLightGCN:
 
         print("n_users : ", self.n_users, ", n_items : ", self.n_items)
         print("train_df Size  : ", len(train_df))
+        print("train_pos_list_df Size : ", len(self.train_pos_list_df))
         print("val_pos_list_df Size : ", len(self.val_pos_list_df))
         print("test_pos_list_df Size : ", len(self.test_pos_list_df))
 
@@ -69,7 +70,7 @@ class TrainLightGCN:
         test_model.load_state_dict(best_model['model_state_dict'])
 
         # Evaluate model using test set
-        test_p, test_recall = self.test(model, self.test_pos_list_df, self.test_interactions_t, K)
+        test_p, test_recall, _ = self.test(model, self.test_pos_list_df, self.test_interactions_t, K)
 
         print(
             f"Best epoch ({best_epoch}): Val Precision@{K}: {best_val_precision:>7f}, Recall@{K}: {best_val_recall:>7f}")
@@ -100,7 +101,7 @@ class TrainLightGCN:
             bpr_loss, reg_loss, final_loss = self.mini_batch_loop(users, pos_items, neg_items, model, optimizer,
                                                                   BATCH_SIZE, DECAY)
 
-            precision, recall = self.test(model, self.val_pos_list_df, self.val_interactions_t, K)
+            precision, recall, _ = self.test(model, self.val_pos_list_df, self.val_interactions_t, K)
 
             bpr_loss_epoch_list.append(bpr_loss)
             reg_loss_epoch_list.append(reg_loss)
@@ -162,56 +163,59 @@ class TrainLightGCN:
 
     def test(self, model, test_pos_list_df, interactions_t, k):
         model.eval()
-        with torch.no_grad():
-            embeds = model.get_embedding(self.edge_index, self.edge_weight)
-            final_usr_embed, final_item_embed = torch.split(embeds, [self.n_users, self.n_items])
-            test_topK_recall, test_topK_precision, _ = self.get_metrics(final_usr_embed, final_item_embed,
-                                                                        test_pos_list_df, interactions_t, k)
-        # user_id_list = list(test_pos_list_df['user_id_idx'])
+
         # with torch.no_grad():
-        #     top_index_df = model.recommendK(self.edge_index, self.edge_weight, self.n_users, self.n_items,
-        #                                     interactions_t, user_id_list, k)
-        #     topK_recall, topK_precision, metrics = model.MARK_MAPK(test_pos_list_df, top_index_df, k)
+        #     embeds = model.get_embedding(self.edge_index, self.edge_weight)
+        #     final_usr_embed, final_item_embed = torch.split(embeds, [self.n_users, self.n_items])
+        #     test_topK_recall, test_topK_precision, _ = self.get_metrics(final_usr_embed, final_item_embed,
+        #                                                                 test_pos_list_df, interactions_t, k)
 
-        return test_topK_precision, test_topK_recall
+        user_id_list = list(test_pos_list_df['user_id_idx'])
+        with torch.no_grad():
+            top_index_df = model.recommendK(self.edge_index, self.edge_weight, self.n_users, self.n_items,
+                                            interactions_t, user_id_list, k)
+            topK_precision, topK_recall, metrics = model.MARK_MAPK(test_pos_list_df, top_index_df, k)
 
-    def get_metrics(self, user_Embed_wts, item_Embed_wts, test_pos_list_df, interactions_t, K):
-        r"""
-        Compute Precision@K, Recall@K
-        # :param test_u_i_matrix:
-        :param interactions_t:
-        :param user_Embed_wts:
-        :param item_Embed_wts:
-        :param test_pos_list_df:
-        :param K:
-        :return: Recall@K, Precision@K
-        """
-        # prepare test set user list mask
-        users = list(test_pos_list_df['user_id_idx'])
-        # print(f"Test users: {len(users)}")
+        return topK_precision, topK_recall, metrics  # test_topK_precision, test_topK_recall
 
-        # compute the score of aim_user-item pairs
-        relevance_score = user_Embed_wts[users] @ item_Embed_wts.t()
-        relevance_score = relevance_score.cpu()
-        masked_relevance_score = torch.mul(relevance_score, (1 - interactions_t))
-        # compute top scoring items for each user
-        topk_relevance_indices = torch.topk(masked_relevance_score, K).indices
-        topk_relevance_indices_df = pd.DataFrame(topk_relevance_indices.numpy())
-        topk_relevance_indices_df['top_rlvnt_itm'] = topk_relevance_indices_df.values.tolist()
-        topk_relevance_indices_df['user_ID'] = users
-        topk_relevance_indices_df = topk_relevance_indices_df[['user_ID', 'top_rlvnt_itm']]
 
-        # measure overlap between recommended (top-K) and held-out user-item interactions
-        metrics_df = pd.merge(test_pos_list_df, topk_relevance_indices_df,
-                              how='left', left_on='user_id_idx', right_on='user_ID')
-        metrics_df['intrsctn_itm'] = [list(set(a).intersection(b)) for a, b in
-                                      zip(metrics_df.item_id_idx_list, metrics_df.top_rlvnt_itm)]  # TP
-
-        metrics_df['recall'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / len(x['item_id_idx_list']), axis=1)
-        metrics_df['precision'] = metrics_df.apply(
-            lambda x: len(x['intrsctn_itm']) / K, axis=1)
-
-        return metrics_df['recall'].mean(), metrics_df['precision'].mean(), metrics_df
+    # def get_metrics(self, user_Embed_wts, item_Embed_wts, test_pos_list_df, interactions_t, K):
+    #     r"""
+    #     Compute Precision@K, Recall@K
+    #     # :param test_u_i_matrix:
+    #     :param interactions_t:
+    #     :param user_Embed_wts:
+    #     :param item_Embed_wts:
+    #     :param test_pos_list_df:
+    #     :param K:
+    #     :return: Recall@K, Precision@K
+    #     """
+    #     # prepare test set user list mask
+    #     users = list(test_pos_list_df['user_id_idx'])
+    #     # print(f"Test users: {len(users)}")
+    #
+    #     # compute the score of aim_user-item pairs
+    #     relevance_score = user_Embed_wts[users] @ item_Embed_wts.t()
+    #     relevance_score = relevance_score.cpu()
+    #     masked_relevance_score = torch.mul(relevance_score, (1 - interactions_t))
+    #     # compute top scoring items for each user
+    #     topk_relevance_indices = torch.topk(masked_relevance_score, K).indices
+    #     topk_relevance_indices_df = pd.DataFrame(topk_relevance_indices.numpy())
+    #     topk_relevance_indices_df['top_rlvnt_itm'] = topk_relevance_indices_df.values.tolist()
+    #     topk_relevance_indices_df['user_ID'] = users
+    #     topk_relevance_indices_df = topk_relevance_indices_df[['user_ID', 'top_rlvnt_itm']]
+    #
+    #     # measure overlap between recommended (top-K) and held-out user-item interactions
+    #     metrics_df = pd.merge(test_pos_list_df, topk_relevance_indices_df,
+    #                           how='left', left_on='user_id_idx', right_on='user_ID')
+    #     metrics_df['intrsctn_itm'] = [list(set(a).intersection(b)) for a, b in
+    #                                   zip(metrics_df.item_id_idx_list, metrics_df.top_rlvnt_itm)]  # TP
+    #
+    #     metrics_df['recall'] = metrics_df.apply(lambda x: len(x['intrsctn_itm']) / len(x['item_id_idx_list']), axis=1)
+    #     metrics_df['precision'] = metrics_df.apply(
+    #         lambda x: len(x['intrsctn_itm']) / K, axis=1)
+    #
+    #     return metrics_df['recall'].mean(), metrics_df['precision'].mean(), metrics_df
 
 
 def main(max_num_epochs=20, gpus_per_trial=1):
@@ -223,7 +227,7 @@ def main(max_num_epochs=20, gpus_per_trial=1):
     # file 1 -- u_i_weight_0.01_0.1_-0.09.csv
     # file 2 -- u_i_weight_0.15_0.35_-0.2.csv
     checkpoint_dir = config['training']['checkpoints_dir']
-    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir)
+    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir, samples=400000)
     train_lightgcn(max_num_epochs, gpus_per_trial)
 
 
