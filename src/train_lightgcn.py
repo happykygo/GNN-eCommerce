@@ -34,6 +34,7 @@ class TrainLightGCN:
         print("val_pos_list_df Size : ", len(self.val_pos_list_df))
         print("test_pos_list_df Size : ", len(self.test_pos_list_df))
 
+        self.train_size = len(train_df)
         self.edge_index, self.edge_weight = df_to_graph(train_df, True)
         self.edge_index = self.edge_index.to(self.device)
         self.edge_weight = self.edge_weight.to(self.device)
@@ -92,14 +93,16 @@ class TrainLightGCN:
 
         # for epoch in tqdm(range(EPOCHS)):
         for epoch in range(EPOCHS):
-            users, pos_items, neg_items = pos_neg_edge_index(self.train_pos_list_df, self.n_users, self.n_items)
-            # print(f"Total train set size = {len(users)}")
-            users = users.to(self.device)
-            pos_items = pos_items.to(self.device)
-            neg_items = neg_items.to(self.device)
+            # users, pos_items, neg_items = pos_neg_edge_index(self.train_pos_list_df, self.n_items)
 
-            bpr_loss, reg_loss, final_loss = self.mini_batch_loop(users, pos_items, neg_items, model, optimizer,
-                                                                  BATCH_SIZE, DECAY)
+            # print(f"Total train set size = {len(users)}")
+            # users = users.to(self.device)
+            # pos_items = pos_items.to(self.device)
+            # neg_items = neg_items.to(self.device)
+
+            # bpr_loss, reg_loss, final_loss = self.mini_batch_loop(users, pos_items, neg_items, model, optimizer,
+            #                                                       BATCH_SIZE, DECAY)
+            bpr_loss, reg_loss, final_loss = self.mini_batch_loop(model, optimizer, BATCH_SIZE, DECAY)
 
             precision, recall, _ = self.test(model, self.val_pos_list_df, self.val_interactions_t, K)
 
@@ -125,30 +128,38 @@ class TrainLightGCN:
             recall_epoch_list,
             precision_epoch_list)
 
-    def mini_batch_loop(self, users, pos_items, neg_items, model, optimizer, batch_size, decay):
+    # def mini_batch_loop(self, users, pos_items, neg_items, model, optimizer, batch_size, decay):
+    def mini_batch_loop(self, model, optimizer, batch_size, decay):
+        n_batch = int(self.train_size / (batch_size*10))
         bpr_loss_batch_list = []
         reg_loss_batch_list = []
         final_loss_batch_list = []
 
-        idx = list(range(len(users)))
-        random.shuffle(idx)
-        loader = DataLoader(idx, batch_size=batch_size, shuffle=True)
+        # idx = list(range(len(users)))
+        # random.shuffle(idx)
+        # loader = DataLoader(idx, batch_size=batch_size, shuffle=True)
 
         model.train()
         # for batch_num, batch in enumerate(tqdm(loader)):
-        for batch_num, batch in enumerate(loader):
+        # for batch_num, batch in enumerate(loader):
+        for batch_idx in range(n_batch):
             optimizer.zero_grad()
 
-            batch_usr = users[batch]
-            batch_pos_items = pos_items[batch]
-            batch_neg_items = neg_items[batch]
+            users, pos_items, neg_items = batch_loader(self.train_pos_list_df, batch_size, self.n_users, self.n_items)
+            users = users.to(self.device)
+            pos_items = pos_items.to(self.device)
+            neg_items = neg_items.to(self.device)
 
-            batch_pos_neg_labels = batch_pos_neg_edges(batch_usr, batch_pos_items, batch_neg_items)
+            # batch_usr = users[batch]
+            # batch_pos_items = pos_items[batch]
+            # batch_neg_items = neg_items[batch]
+
+            batch_pos_neg_labels = batch_pos_neg_edges(users, pos_items, neg_items)
             out = model(self.edge_index, batch_pos_neg_labels, self.edge_weight)
-            size = len(batch)
+            size = len(users)
 
             bpr_loss = model.recommendation_loss(out[:size], out[size:], 0) * size
-            reg_loss = regularization_loss(model.embedding.weight, size, batch_usr, batch_pos_items, batch_neg_items,
+            reg_loss = regularization_loss(model.embedding.weight, size, users, pos_items, neg_items,
                                            decay)
             loss = bpr_loss + reg_loss
 
@@ -227,7 +238,7 @@ def main(max_num_epochs=20, gpus_per_trial=1):
     # file 1 -- u_i_weight_0.01_0.1_-0.09.csv
     # file 2 -- u_i_weight_0.15_0.35_-0.2.csv
     checkpoint_dir = config['training']['checkpoints_dir']
-    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir, samples=400000)
+    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir, samples=200000)
     train_lightgcn(max_num_epochs, gpus_per_trial)
 
 
