@@ -265,7 +265,7 @@ def regularization_loss(init_embed, batch_size, batch_usr, batch_pos, batch_neg,
     return reg_loss * decay
 
 
-def save_model(path, model, optimizer, precision, recall, epoch=None):
+def save_model(path, model, optimizer, precision, recall, epoch=None, hyperparams=None):
     """
     Function to save the trained model to disk.
     """
@@ -279,7 +279,8 @@ def save_model(path, model, optimizer, precision, recall, epoch=None):
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'precision': precision,
-                'recall': recall
+                'recall': recall,
+                'hyperparams': hyperparams
                 }, path)
 
     print(f"{path} saved at {dt_string}")

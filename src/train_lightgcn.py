@@ -43,13 +43,15 @@ class TrainLightGCN:
 
         EPOCHS = int(args[0])
 
-        tune_config = {
+        self.tune_config = tune_config = {
             "latent_dim": 80,
-            "n_layers": 3,
+            "n_layers": 4,
             "LR": 0.005,
             "DECAY": 0.0001,  # reg loss
             "BATCH_SIZE": 1024,  # train mini batch size
         }
+
+        print(tune_config)
 
         model = LightGCN(self.n_users + self.n_items, tune_config["latent_dim"], tune_config["n_layers"])
         optimizer = torch.optim.Adam(model.parameters(), tune_config["LR"])
@@ -106,7 +108,7 @@ class TrainLightGCN:
             # save the best model
             if recall > best_recall:
                 best_recall = recall
-                save_model(checkpoint_dir + "/LightGCN_best.pt", model, optimizer, precision, recall, epoch=epoch)
+                save_model(checkpoint_dir + "/LightGCN_best.pt", model, optimizer, precision, recall, epoch=epoch, hyperparams=self.tune_config)
 
         return (
             bpr_loss_epoch_list,
