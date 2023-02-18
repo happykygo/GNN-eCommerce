@@ -1,17 +1,18 @@
 from sklearn.model_selection import train_test_split
-from src.utils_v2 import *
-from src.lightgcn import LightGCN
+from utils_v2 import *
+from lightgcn import LightGCN
 import yaml
 import argparse
 
 
 class TrainLightGCN:
-    def __init__(self, csv_path, checkpoints_dir="model-checkpoints", samples=None):
+    def __init__(self, csv_path, checkpoints_dir="model-checkpoints", gpu=0, samples=None):
         self.checkpoints_dir = checkpoints_dir
         self.csv_path = csv_path
 
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
+        self.device = torch.device(f"cuda:{gpu}" if torch.cuda.is_available() else "cpu")
+        print(f"device: {self.device}")
+        
         interaction_matrix = pd.read_csv(self.csv_path)
 
         if samples:
@@ -44,8 +45,8 @@ class TrainLightGCN:
         EPOCHS = int(args[0])
 
         self.tune_config = tune_config = {
-            "latent_dim": 80,
-            "n_layers": 4,
+            "latent_dim": 96,
+            "n_layers": 5,
             "LR": 0.005,
             "DECAY": 0.0001,  # reg loss
             "BATCH_SIZE": 1024,  # train mini batch size
@@ -88,10 +89,12 @@ class TrainLightGCN:
         best_recall = 0.0
 
         print(f"Begin training at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
+        n_batch = int(self.train_size / (BATCH_SIZE*40))
+        print(f"1 epoch = {n_batch} batches")
+        
         # for epoch in tqdm(range(EPOCHS)):
         for epoch in range(EPOCHS):
-            bpr_loss, reg_loss, final_loss = self.mini_batch_loop(model, optimizer, BATCH_SIZE, DECAY)
+            bpr_loss, reg_loss, final_loss = self.mini_batch_loop(model, optimizer, BATCH_SIZE, DECAY, n_batch)
 
             precision, recall, _ = self.test(model, self.val_pos_list_df, self.val_interactions_t, K)
 
@@ -117,8 +120,7 @@ class TrainLightGCN:
             recall_epoch_list,
             precision_epoch_list)
 
-    def mini_batch_loop(self, model, optimizer, batch_size, decay):
-        n_batch = int(self.train_size / (batch_size*20))
+    def mini_batch_loop(self, model, optimizer, batch_size, decay, n_batch):
         bpr_loss_batch_list = []
         reg_loss_batch_list = []
         final_loss_batch_list = []
@@ -169,8 +171,8 @@ def main(max_num_epochs=20, gpus_per_trial=1):
     # file 1 -- u_i_weight_0.01_0.1_-0.09.csv
     # file 2 -- u_i_weight_0.15_0.35_-0.2.csv
     checkpoint_dir = config['training']['checkpoints_dir']
-    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir)
-    train_lightgcn(max_num_epochs, gpus_per_trial)
+    train_lightgcn = TrainLightGCN(csv_path, checkpoint_dir, gpu)
+    train_lightgcn(max_num_epochs)
 
 
 if __name__ == "__main__":
@@ -184,4 +186,4 @@ if __name__ == "__main__":
                     help="GPUs per trial")
     args = vars(ap.parse_args())
 
-    main(args['epochs'], args['gpus'])
+    main(args['epochs'], args['gpu'])
