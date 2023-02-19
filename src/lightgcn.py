@@ -174,7 +174,9 @@ class LightGCN(torch.nn.Module):
         src, dst = torch.split(embeds, [n_users, n_items])
         pred = src[user_id_list] @ dst.t()
         pred = pred.cpu()
+        print("22222222")
         masked_pred = torch.mul(pred, (1-interactions_t))
+        print("33333333")
 
         top_index = masked_pred.topk(k, dim=-1).indices
         top_index_df = pd.DataFrame(top_index.numpy())

@@ -288,12 +288,9 @@ def save_model(path, model, optimizer, precision, recall, epoch=None, hyperparam
     print(f"{path} saved at {dt_string}")
 
 
-def load_data_model(checkpoint_dir, gpu):
+def load_data_model(checkpoint_dir, device):
     train_df = pd.read_csv(checkpoint_dir + 'processed_train.csv')
     test_df = pd.read_csv(checkpoint_dir + 'processed_test.csv')
     val_df = pd.read_csv(checkpoint_dir + 'processed_val.csv')
-    if gpu:
-        best_model = torch.load(checkpoint_dir + "LightGCN_best.pt", map_location=torch.device('cpu'))
-    else:
-        best_model = torch.load(checkpoint_dir + "LightGCN_best.pt")
+    best_model = torch.load(checkpoint_dir + "LightGCN_best.pt", map_location=device)
     return train_df, test_df, val_df, best_model
