@@ -37,7 +37,7 @@ def sync_nodes(train_df, val_df, test_df):
     return val_df, test_df
 
 
-def relabelling(train_df, val_df, test_df):
+def relabelling(train_df, val_df=None, test_df=None):
     r"""
     Relabelling user/ item nodes.
     :param train_df:
@@ -49,10 +49,12 @@ def relabelling(train_df, val_df, test_df):
     le_item = pp.LabelEncoder()
     train_df['user_id_idx'] = le_user.fit_transform(train_df['user_id'].values)
     train_df['item_id_idx'] = le_item.fit_transform(train_df['item_id'].values)
-    val_df['user_id_idx'] = le_user.transform(val_df['user_id'].values)
-    val_df['item_id_idx'] = le_item.transform(val_df['item_id'].values)
-    test_df['user_id_idx'] = le_user.transform(test_df['user_id'].values)
-    test_df['item_id_idx'] = le_item.transform(test_df['item_id'].values)
+    if val_df:
+        val_df['user_id_idx'] = le_user.transform(val_df['user_id'].values)
+        val_df['item_id_idx'] = le_item.transform(val_df['item_id'].values)
+    if test_df:
+        test_df['user_id_idx'] = le_user.transform(test_df['user_id'].values)
+        test_df['item_id_idx'] = le_item.transform(test_df['item_id'].values)
 
     n_users = train_df['user_id_idx'].nunique()
     n_items = train_df['item_id_idx'].nunique()
@@ -283,3 +285,14 @@ def save_model(path, model, optimizer, precision, recall, epoch=None):
                 }, path)
 
     print(f"{path} saved at {dt_string}")
+
+
+def load_data_model(checkpoint_dir, gpu):
+    train_df = pd.read_csv(checkpoint_dir + 'processed_train.csv')
+    test_df = pd.read_csv(checkpoint_dir + 'processed_test.csv')
+    val_df = pd.read_csv(checkpoint_dir + 'processed_val.csv')
+    if gpu:
+        best_model = torch.load(checkpoint_dir + "LightGCN_best.pt", map_location=torch.device('cpu'))
+    else:
+        best_model = torch.load(checkpoint_dir + "LightGCN_best.pt")
+    return train_df, test_df, val_df, best_model
