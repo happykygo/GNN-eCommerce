@@ -2,6 +2,7 @@ import torch
 from ts.torch_handler.base_handler import BaseHandler
 import pandas as pd
 import os
+from lightgcn import LightGCN
 
 
 class LightGCNHandler(BaseHandler):
@@ -23,12 +24,10 @@ class LightGCNHandler(BaseHandler):
         self.device = torch.device("cuda:" + str(properties.get("gpu_id")) if torch.cuda.is_available() else "cpu")
 
         # Read model serialize/pt file
-        serialized_file = self.manifest['model']['ameri']
+        serialized_file = self.manifest['model']['serializedFile']
         model_pt_path = os.path.join(model_dir, serialized_file)
         if not os.path.isfile(model_pt_path):
             raise RuntimeError("Missing the model.pt file")
-
-        self.model = torch.jit.load(model_pt_path)
 
         train_df_path = os.path.join(model_dir, 'processed_train.csv')
         train_df = pd.read_csv(train_df_path)
@@ -41,6 +40,11 @@ class LightGCNHandler(BaseHandler):
         self.edge_index = self.edge_index.to(self.device)
         self.edge_weight = self.edge_weight.to(self.device)
         self.i_m_matrix = self.i_m_matrix.to(self.device)
+
+        model_state = torch.load(model_pt_path)
+        hyperparams = model_state['hyperparams']
+        self.model = LightGCN(self.n_users + self.n_items, hyperparams['latent_dim'], hyperparams['n_layers'])
+        self.model.load_state_dict(model_state['model_state_dict'])
         self.model.to(self.device)
 
         self.initialized = True
