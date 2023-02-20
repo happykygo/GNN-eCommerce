@@ -18,3 +18,5 @@ argparse
 recmetrics
 DGL
 gnnlens
+torchserve
+torch-model-archiver
