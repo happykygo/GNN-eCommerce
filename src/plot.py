@@ -64,14 +64,13 @@ def compute_any5(hit_df):
     return hit_df
 
 def compute_path(hit_df, graph, hit_df_path):
-    def hops(user, item_list, any5, graph):
+    def hops(user, item_list, graph):
         result = list()
-        if any5:
-            for i in item_list:
-                result.append(shortest_path(graph, user, i))
+        for i in item_list:
+            result.append(shortest_path(graph, user, i))
         return result
 
-    hit_df['paths'] = [hops(a,b,c,graph) for a,b,c in zip(hit_df.user_id_idx, hit_df.top_rlvnt_itm, hit_df.any5)]
+    hit_df['paths'] = [hops(a,b,graph) for a,b in zip(hit_df.user_id_idx, hit_df.top_rlvnt_itm)]
     hit_df.to_csv(hit_df_path)
     print(f'Hit_df is stored at: {hit_df_path}')
     return hit_df
@@ -96,6 +95,8 @@ def main():
     hit_df = compute_path(hit_df, graph, recommend_dir+'hit_df.csv')
 
 
+if __name__ == "__main__":
+    main()
 # def glance_df(df):
 #     n_users, n_items, glance, _, _ = relabelling(df)
 #     glance.item_id_idx = glance.item_id_idx + n_users       # not for train_df
