@@ -21,7 +21,7 @@ class LightGCNHandler(BaseHandler):
 
         properties = context.system_properties
         model_dir = properties.get("model_dir")
-        self.device = torch.device("cuda:" + str(properties.get("gpu_id")) if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:"+str(properties.get("gpu_id"))) if torch.cuda.is_available() else "cpu"
 
         # Read model serialize/pt file
         serialized_file = self.manifest['model']['serializedFile']
@@ -49,6 +49,27 @@ class LightGCNHandler(BaseHandler):
 
         self.initialized = True
 
+    def preprocess(self, data):
+        """
+        Preprocess function to convert the request input to a tensor(Torchserve supported format).
+        The user needs to override to customize the pre-processing
+
+        Args :
+            data (list): List of the data from the request input.
+
+        Returns:
+            tensor: Returns the tensor data of the input
+        """
+        print("-----------------------------")
+        print("data: ", data)
+        preprocessed_data = data[0].get("data")
+        if preprocessed_data is None:
+            preprocessed_data = data[0].get("body")
+        print("preprocessed_data: ", preprocessed_data)
+        print("-----------------------------")
+
+        return preprocessed_data
+    
     def inference(self, data, *args, **kwargs):
         """The Inference Request is made through this function and the user
         needs to override the inference function to customize it.
@@ -63,12 +84,12 @@ class LightGCNHandler(BaseHandler):
                             in this function.
         """
         with torch.no_grad():
-            marshalled_data = data.to(self.device)
-            interactions_t = torch.index_select(self.i_m_matrix, 0, marshalled_data).to_dense()
+            marshalled_data = torch.as_tensor(data, device=self.device)
+            interactions_t = torch.index_select(self.i_m_matrix, 0, marshalled_data).to_dense().cpu()
 
             k = 20
             topK_df = self.model.recommendK(self.edge_index, self.edge_weight, self.n_users, self.n_items,
-                                            interactions_t, marshalled_data, k)
+                                            interactions_t, data, k)
 
             topK = topK_df['top_rlvnt_itm']
 
