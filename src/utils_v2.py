@@ -289,8 +289,8 @@ def save_model(path, model, optimizer, precision, recall, epoch=None, hyperparam
 
 
 def load_data_model(checkpoint_dir, device):
-    train_df = pd.read_csv(checkpoint_dir + 'processed_train.csv')
-    test_df = pd.read_csv(checkpoint_dir + 'processed_test.csv')
-    val_df = pd.read_csv(checkpoint_dir + 'processed_val.csv')
-    best_model = torch.load(checkpoint_dir + "LightGCN_best.pt", map_location=device)
+    train_df = pd.read_csv(checkpoint_dir + '/processed_train.csv')
+    test_df = pd.read_csv(checkpoint_dir + '/processed_test.csv')
+    val_df = pd.read_csv(checkpoint_dir + '/processed_val.csv')
+    best_model = torch.load(checkpoint_dir + "/LightGCN_best.pt", map_location=device)
     return train_df, test_df, val_df, best_model

@@ -81,15 +81,16 @@ def main():
         config = yaml.safe_load(config_file)
     device = torch.device(f"cuda:0" if torch.cuda.is_available() else "cpu")
 
-    checkpoint_dir = config['training']['checkpoints_dir'] + '2023-02-18_071308/'
-    recommend_dir = config['inference']['recommendation']+'2023-02-18_071308/'
+    checkpoint = "aws2023-02-22_0307/"
+    checkpoint_dir = config['training']['checkpoints_dir'] + checkpoint
+    recommend_dir = config['inference']['recommendation'] + checkpoint
 
     n_users, n_items, train_df, val_df, test_df, edge_index, edge_weight, graph = \
         create_store_nx_graph(checkpoint_dir, recommend_dir+'nx_graph.json', device)
     # graph = load_nx_graph(recommend_dir+'nx_graph.json')
 
     # string to list of int, uniquely identified items
-    hit_df = process_reco_df(recommend_dir+'K20-2023-02-18_071308.csv', n_users)
+    hit_df = process_reco_df(recommend_dir + "K20-" + checkpoint + '.csv', n_users)
     hit_df = compute_shortest_path(hit_df, graph)
     hit_df = compute_any5(hit_df)
     hit_df = compute_path(hit_df, graph, recommend_dir+'hit_df.csv')
