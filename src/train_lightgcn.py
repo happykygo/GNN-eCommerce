@@ -162,7 +162,7 @@ class TrainLightGCN:
         return topK_precision, topK_recall, metrics
 
 
-def main(max_num_epochs=20, gpus_per_trial=1):
+def main(max_num_epochs=20, gpu=0):
     with open("config.yaml") as config_file:
         config = yaml.safe_load(config_file)
 
