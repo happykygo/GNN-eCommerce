@@ -45,7 +45,7 @@ class TrainLightGCN:
         EPOCHS = int(args[0])
 
         self.tune_config = tune_config = {
-            "latent_dim": 96,
+            "latent_dim": 90,
             "n_layers": 5,
             "LR": 0.005,
             "DECAY": 0.0001,  # reg loss
@@ -162,7 +162,7 @@ class TrainLightGCN:
         return topK_precision, topK_recall, metrics
 
 
-def main(max_num_epochs=20, gpus_per_trial=1):
+def main(max_num_epochs=20, gpu=0):
     with open("config.yaml") as config_file:
         config = yaml.safe_load(config_file)
 
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     # Add the arguments to the parser
     ap.add_argument("-e", "--epochs", required=True,
                     help="Max number of epochs")
-    ap.add_argument("-g", "--gpus", required=True,
+    ap.add_argument("-g", "--gpu", required=True,
                     help="GPUs per trial")
     args = vars(ap.parse_args())
 
