@@ -16,3 +16,6 @@ ray
 tqdm
 argparse
 recmetrics
+DGL
+gnnlens
+networkx
