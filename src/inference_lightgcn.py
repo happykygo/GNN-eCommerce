@@ -58,12 +58,11 @@ class InferenceLightGCN:
         return result
 
 
-
-def main(gpu=0):
+def main(gpu, checkpoint):
     with open("config.yaml") as config_file:
         config = yaml.safe_load(config_file)
 
-    checkpoint_dir = config['training']['checkpoints_dir']+'2023-02-18_071308/'
+    checkpoint_dir = config['training']['checkpoints_dir'] + checkpoint
     inferenceModel = InferenceLightGCN(checkpoint_dir, gpu)
 
     # target_users = list(inferenceModel.users_list['user_id_idx'].sample(1))
@@ -71,8 +70,8 @@ def main(gpu=0):
     # target_users = list(inferenceModel.p_user_list['user_id_idx'].sample(1))
     k = 20
     result = inferenceModel.recommendation(k)
-    inference_dir = config['inference']['recommendation']
-    result.to_csv(inference_dir+'K'+str(k)+'-2023-02-18_071308.csv')
+    inference_dir = config['inference']['recommendation'] + checkpoint
+    result.to_csv(inference_dir+'K'+str(k)+'-' + checkpoint + '.csv')
 
     # target_users = list([67, 96])
     # t_result = result.loc[(result['user_id_idx'].isin(target_users))]
@@ -83,8 +82,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
 
     # Add the arguments to the parser
-    ap.add_argument("-g", "--gpu", required=True,
-                    help="which gpu to use")
+    ap.add_argument("-g", "--gpu", required=True, help="which gpu to use")
+    ap.add_argument("-c", "--checkpoint", required=True, help="which checkpoint to use")
     args = vars(ap.parse_args())
-    main(args['gpu'])
+    main(args['gpu'], args['checkpoint'])
 
