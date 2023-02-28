@@ -2,22 +2,17 @@ from src.lightgcn import LightGCN
 from src.utils_v2 import interact_matrix, df_to_graph, load_data_model, pos_item_list
 import pandas as pd
 import torch
+import networkx as nx
+from networkx.readwrite import json_graph
+from networkx import has_path, shortest_path_length, shortest_path
+import jsonpickle
 import yaml
 import argparse
 
 
 class InferenceLightGCN:
     def __init__(self, checkpoint_dir, gpu=0):
-        # train_df = pd.read_csv(checkpoint_dir + 'processed_train.csv')  # nodes are uniquely identified
-        # test_df = pd.read_csv(checkpoint_dir + 'processed_test.csv')
-        # val_df = pd.read_csv(checkpoint_dir + 'processed_val.csv')
-        # if gpu:
-        #     best_model = torch.load(checkpoint_dir + "LightGCN_best.pt", map_location=torch.device('cpu'))
-        # else:
-        #     best_model = torch.load(checkpoint_dir + "LightGCN_best.pt")
-
         device = torch.device(f"cuda:{gpu}" if torch.cuda.is_available() else "cpu")
-
         train_df, test_df, val_df, best_model = load_data_model(checkpoint_dir, device)
         self.edge_index, self.edge_weight = df_to_graph(train_df, True)
         self.edge_index = self.edge_index.to(device)
@@ -31,12 +26,7 @@ class InferenceLightGCN:
         val_test = pd.concat([test_df, val_df], ignore_index=True)
         val_test = pos_item_list(val_test).sort_values(by=['user_id_idx'])
         user_list = list(val_test['user_id_idx'])
-        print("0000000")
         self.interactions_t = torch.index_select(i_m_matrix, 0, torch.tensor(user_list)).to_dense()
-        print("1111111")
-        # users_list = self.combined[['user_id', 'user_id_idx']].drop_duplicates()
-        # purchased_users = val_test.loc[val_test['weight'] == 1.0]
-        # self.users_list = users_list[['user_id', 'user_id_idx']].drop_duplicates()
 
         hyperparams = best_model['hyperparams']
         self.test_model = LightGCN(n_users + n_items, hyperparams['latent_dim'], hyperparams['n_layers'])
@@ -51,40 +41,113 @@ class InferenceLightGCN:
     def recommendation(self, k):
         topK_df = self.test_model.recommendK(self.edge_index, self.edge_weight, self.n_users, self.n_items,
                                           self.interactions_t, self.user_list, k)
-        result = pd.merge(self.val_test, topK_df, how='left', left_on='user_id_idx', right_on='user_ID')
-        result['overlap_item'] = [list(set(a).intersection(b)) for a, b in zip(result.item_id_idx_list, result.top_rlvnt_itm)]
-        print(f"Result: \n {result.to_string()}")
+        topK_precision, topK_recall, metrics = self.test_model.MARK_MAPK(self.val_test, topK_df, k)
+        # result = pd.merge(self.val_test, topK_df, how='left', left_on='user_id_idx', right_on='user_ID')
+        # result['overlap_item'] = [list(set(a).intersection(b)) for a, b in zip(result.item_id_idx_list, result.top_rlvnt_itm)]
+        return topK_precision, topK_recall, metrics
 
-        return result
+    def create_store_nx_graph(self, graph_file):
+        edges, _ = self.edge_index.split(int(len(self.edge_weight) / 2), dim=1)
+        edges = edges.t().tolist()
+        g = nx.Graph(edges)
+        with open(graph_file, 'w+') as _file:
+            _file.write(jsonpickle.encode(json_graph.adjacency_data(g)))
+            print(f'nx graph is stored at: {graph_file}')
+        return g
 
+    def load_nx_graph(self, graph_file):
+        # graph = load_nx_graph(reco_dir+'nx_graph.json')
+        call_graph = None
+        with open(graph_file, 'r+') as _file:
+            call_graph = json_graph.adjacency_graph(
+                jsonpickle.decode(_file.read()),
+                directed=False
+            )
+        return call_graph
 
+    def prepare_hit_df(self, metrics):
+        """
+        hit_df contains len(metrics.overlap_item) > 0.
+        item_id in hit-df need to be uniquely identified
+        :param metrics:
+        :return:
+        """
+        def index_items(items, n_users):
+            return list(map(lambda x: x + n_users, items))
 
-def main(gpu=0):
+        hit_df = metrics.loc[metrics.overlap_item.apply(lambda x: len(x) > 0)]
+        hit_df.item_id_idx_list = hit_df.item_id_idx_list.apply(lambda x: index_items(x, self.n_users))
+        hit_df.top_rlvnt_itm = hit_df.top_rlvnt_itm.apply(lambda x: index_items(x, self.n_users))
+        hit_df.overlap_item = hit_df.overlap_item.apply(lambda x: index_items(x, self.n_users))
+        return hit_df
+
+    def compute_paths(self, hit_df, graph):
+        """
+        1. Compute path_len between target user and each recommended items
+        2. Check if any path_len > 3
+        3. Compute paths from target user to each recommended items
+        :param hit_df:
+        :param graph:
+        :return:
+        """
+        def path_len(g, s, ds):
+            result = []
+            for d in ds:
+                if has_path(g, s, d):
+                    result.append(shortest_path_length(g, s, d))
+                else:
+                    result.append(-1)
+            return result
+        def longerThan3(x):
+            for i in x:
+                if i > 3:
+                    return True
+            return False
+        def paths(user, item_list, graph):
+            result = list()
+            for i in item_list:
+                result.append(shortest_path(graph, user, i))
+            return result
+
+        hit_df['path_lens'] = [path_len(graph, s, ds) for s, ds in zip(hit_df.user_id_idx, hit_df.top_rlvnt_itm)]
+        hit_df = hit_df.sort_values(by=['path_lens'], ascending=False)
+
+        hit_df['longer_than_3'] = hit_df.shortest_path.apply(lambda x: longerThan3(x))
+
+        hit_df['paths'] = [paths(a, b, graph) for a, b in zip(hit_df.user_id_idx, hit_df.top_rlvnt_itm)]
+        return hit_df
+
+def main(gpu, checkpoint):
     with open("config.yaml") as config_file:
         config = yaml.safe_load(config_file)
 
-    checkpoint_dir = config['training']['checkpoints_dir']+'2023-02-18_071308/'
-    inferenceModel = InferenceLightGCN(checkpoint_dir, gpu)
+    checkpoint_dir = config['training']['checkpoints_dir'] + checkpoint
+    inference_dir = config['inference']['recommendation'] + checkpoint
 
-    # target_users = list(inferenceModel.users_list['user_id_idx'].sample(1))
-    # Rec for purchased user
-    # target_users = list(inferenceModel.p_user_list['user_id_idx'].sample(1))
     k = 20
-    result = inferenceModel.recommendation(k)
-    inference_dir = config['inference']['recommendation']
-    result.to_csv(inference_dir+'K'+str(k)+'-2023-02-18_071308.csv')
+    inferenceModel = InferenceLightGCN(checkpoint_dir, gpu)
+    topK_precision, topK_recall, metrics = inferenceModel.recommendation(k)
+    print(f"Inference Precision@{k}: {topK_precision:>7f}, Recall@{k}: {topK_recall:>7f}")
+    metrics.to_csv(inference_dir+'/K'+str(k)+'-' + checkpoint + '.csv')
+    print(f'topK.csv is stored.')
 
-    # target_users = list([67, 96])
-    # t_result = result.loc[(result['user_id_idx'].isin(target_users))]
-    # print(f'Target users are : {target_users}; \nRecommendation for user: \n {t_result.to_string()}')
+    nx_graph = inferenceModel.create_store_nx_graph(inference_dir+'/nx_graph.json')
+    # if nx_graph is none:
+    #   nx_graph = load_nx_graph(graph_file)
+
+    hit_df = inferenceModel.prepare_hit_df(metrics)
+    hit_df = inferenceModel.compute_paths(hit_df, nx_graph)
+    hit_df.to_csv(inference_dir+'/hit_df.csv')
+    print(f'hit_df.csv is stored.')
+
 
 if __name__ == "__main__":
     # Construct the argument parser
     ap = argparse.ArgumentParser()
 
     # Add the arguments to the parser
-    ap.add_argument("-g", "--gpu", required=True,
-                    help="which gpu to use")
+    ap.add_argument("-g", "--gpu", required=True, help="which gpu to use")
+    ap.add_argument("-c", "--checkpoint", required=True, help="which checkpoint to use")
     args = vars(ap.parse_args())
-    main(args['gpu'])
+    main(args['gpu'], args['checkpoint'])
 

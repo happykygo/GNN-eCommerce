@@ -20,3 +20,4 @@ DGL
 gnnlens
 torchserve
 torch-model-archiver
+networkx
