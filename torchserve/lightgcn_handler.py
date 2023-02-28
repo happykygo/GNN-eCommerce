@@ -91,9 +91,23 @@ class LightGCNHandler(BaseHandler):
             topK_df = self.model.recommendK(self.edge_index, self.edge_weight, self.n_users, self.n_items,
                                             interactions_t, data, k)
 
-            topK = topK_df['top_rlvnt_itm']
+            topK = {'items': list(topK_df['top_rlvnt_itm'])}
 
         return topK
+
+    def postprocess(self, data):
+        """
+        The post process function makes use of the output from the inference and converts into a
+        Torchserve supported response output.
+
+        Args:
+            data (Torch Tensor): The torch tensor received from the prediction output of the model.
+
+        Returns:
+            List: The post process function returns a list of the predicted output.
+        """
+
+        return [data]
 
     def df_to_graph(self, train_df, weight):
         r"""Convert dataset to bipartite graph_edge_index
