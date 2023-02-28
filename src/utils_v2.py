@@ -165,68 +165,12 @@ def df_to_graph(train_df, weight):
     return graph_edge_index
 
 
-def sample_neg(x, n_users, n_itm):
-    while True:
-        neg_id = random.randint(0, n_itm - 1) + n_users
-        if neg_id not in x:
-            return neg_id
-
-
-# def pos_neg_edge_index(train_pos_list_df, n_users, n_itm):
-#     r"""Generate random neg_item for each (usr, pos_item) pair
-#     example:
-#     train_pos_list_df as below:
-#     user    pos_list
-#     u1      [1,2,3]
-#     u2      [7,8]
-#
-#     Output should be(pos, neg item ids are +n_users):
-#     user    pos     neg
-#     u1      1       11
-#     u1      2       16
-#     u1      3       77
-#     u2      7       4
-#     u2      8       9
-#
-#     Args:
-#         :param train_pos_list_df: (Tensor)
-#         :param n_users: number of users
-#         :param n_itm: number of items
-#     Returns:
-#         users, pos_items, neg_items
-#
-#     """
-#     users = torch.LongTensor(train_pos_list_df.user_id_idx.values.tolist())
-#
-#     p = train_pos_list_df.item_id_idx_list.apply(lambda x: random.choice(x)).values
-#     pos_items = torch.LongTensor(p)
-#
-#     n = train_pos_list_df.ignor_neg_list.apply(lambda x: sample_neg(x, n_users, n_itm)).values
-#     neg_items = torch.LongTensor(n)
-#
-#     return users, pos_items, neg_items
-
-
-# def pos_neg_edge_index(train_pos_list_df, n_neg, n_users, n_itm):
-#     def sample_neg(x, n_neg, n_users, n_itm):
-#         neg_list = list()
-#         while len(neg_list) < n_neg:
-#             neg_id = random.randint(0, n_itm - 1) + n_users
-#             if neg_id not in x:
-#                 neg_list.append(neg_id)
-#         return neg_list
-#
-#     u = [[a]*len(b)*n_neg for a, b in zip(train_pos_list_df.user_id_idx, train_pos_list_df.item_id_idx_list)]
-#     users = torch.LongTensor(sum(u, []))
-#     p = train_pos_list_df['item_id_idx_list'].apply(lambda x: x * n_neg).tolist()
-#     pos_items = torch.LongTensor(sum(p, []))
-#     n = [sample_neg(a, n_neg*len(b), n_users, n_itm) for a, b in
-#          zip(train_pos_list_df.ignor_neg_list, train_pos_list_df.item_id_idx_list)]
-#     neg_items = torch.LongTensor(sum(n, []))
-#     return users, pos_items, neg_items
-
-
 def batch_loader(train_pos_list_df, batch_size, n_users, n_items):
+    def sample_neg(x, n_users, n_itm):
+        while True:
+            neg_id = random.randint(0, n_itm - 1) + n_users
+            if neg_id not in x:
+                return neg_id
     users = random.sample(train_pos_list_df.user_id_idx.tolist(), batch_size)
     users_df = pd.DataFrame(users, columns=['users'])
 
