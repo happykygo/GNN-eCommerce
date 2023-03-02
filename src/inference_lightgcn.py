@@ -1,3 +1,4 @@
+import os.path
 from src.lightgcn import LightGCN
 from src.utils_v2 import interact_matrix, df_to_graph, load_data_model, pos_item_list
 import pandas as pd
@@ -112,7 +113,7 @@ class InferenceLightGCN:
         hit_df['path_lens'] = [path_len(graph, s, ds) for s, ds in zip(hit_df.user_id_idx, hit_df.top_rlvnt_itm)]
         hit_df = hit_df.sort_values(by=['path_lens'], ascending=False)
 
-        hit_df['longer_than_3'] = hit_df.shortest_path.apply(lambda x: longerThan3(x))
+        hit_df['longer_than_3'] = hit_df.path_lens.apply(lambda x: longerThan3(x))
 
         hit_df['paths'] = [paths(a, b, graph) for a, b in zip(hit_df.user_id_idx, hit_df.top_rlvnt_itm)]
         return hit_df
@@ -123,6 +124,8 @@ def main(gpu, checkpoint):
 
     checkpoint_dir = config['training']['checkpoints_dir'] + checkpoint
     inference_dir = config['inference']['recommendation'] + checkpoint
+    if not os.path.exists(inference_dir):
+        os.makedirs(inference_dir)
 
     k = 20
     inferenceModel = InferenceLightGCN(checkpoint_dir, gpu)

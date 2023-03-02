@@ -5,6 +5,5 @@ venv/
 
 # Experiment files
 notebooks/Archive/
-doc/
 data/ml-100k/
 /Glance_graph/
