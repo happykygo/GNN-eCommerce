@@ -1,6 +1,5 @@
 # GNN-eCommerce
 ### Ecommerce Recommender using GNN
-Team member: Ying Kang
 
 ## Introduction
 
