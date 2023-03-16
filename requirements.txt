@@ -6,6 +6,7 @@ scikit-surprise
 matplotlib
 jupyter
 torch
+-f https://data.pyg.org/whl/torch-1.13.0+cpu.html       # for Mac OS, CPU machine.
 torch_geometric
 torch_sparse
 torch_scatter
