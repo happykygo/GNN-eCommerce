@@ -1,8 +1,5 @@
 # GNN-eCommerce
 ### Ecommerce Recommender using GNN
-Team member: Ying Kang
-
-    - Document limitations of your model / data / ML pipeline
 
 ## Introduction
 
@@ -23,47 +20,48 @@ For new customers who have no activity records, it should be handled by other mo
 
 This model can also be ensembled with a content filtering recommender, which recommends based on a consumers in-session activity.
 
-
 ## Dataset and [Data pipline](notebooks/1.data_preprocessing.ipynb)
 The dataset used to train and evaluate the model is eCommerce Events History in Cosmetics Shop from [Kaggle](https://www.kaggle.com/datasets/mkechinov/ecommerce-events-history-in-cosmetics-shop).
-It contains 20 million events data for 1.6 million consumers interacted with 54 thousand items during 5 months.
+It contains 20 million events of 1.6 million consumers interacted with 54 thousand items during 5 months. There are four event types: view, add to cart, remove from cart and purchase. The local "checked out" version is in [directory](data/raw/cosmetic-shop-ecommerce-events).
 
-DVC is used for version control and managing lineage. Remote repository is on Google Drive. The local "checked out" version is in [directory](data/raw/cosmetic-shop-ecommerce-events). 
+These events are transformed into graph representation in order to fit into a GNN. Consumers and items are graph nodes. Events are graph edges between consumer and item nodes.
+An edge has a weight, which is determined by the event types.
 
-Each raw data represents a consumer(`user_id`) interact with a product(`item_id`) on one event type(`event_type`). In total, there are four `event_type`.
-
-LightGCN model requests the graph representation of the raw data. The graph representation treats each consumer(`user_id`) and product(`item_id`) as **node**. The interaction between consumer and product **nodes** are **edges**. Multiple event types between one consumer-product pair is summed up to represent `edge_weight`.
-
-There are multiple steps and ways to transform raw data into graph representation. Here is a summary:
-1. Map each `eventType` to related `eventWeight`. This is a config setting. I tried out 2 different reasonable possible configs, and it turns out this does not affect the model performance much.
-2. Sum up multiple `eventWeight` between a consumer-product pair to be raw `edgeWeight`.
-3. Adjust raw `edgeWeight` to a proper range (between 0 and 1).
-   1. Negative raw `edgeWeight` is adjusted to be equal to `eventWeight` of _View_.
-   2. raw `edgeWeight` greater than 1 and contains at least **one** _Purchase_ `eventType`, this is adjusted to be 1.0.
-   3. raw `edgeWeight` greater than 1 and contains **NO** _Purchase_ `eventType`, this is adjusted to be 0.5.
+There are more than one way to determine the edge weight. Here is an example:
+1. assign a weight to individual event types: view = 0.01, cart = 0.1, remove from cart = -0.19, purchase = 1.0
+2. sum the wights of all events between a consumer-product pair to be raw edge weight.
+3. Adjust raw edge weight into proper range (between 0 and 1).
 
 Processed data is persisted in [directory](data/preprocessed/u_i_weight_0.01_0.1_-0.09.csv).
+DVC is used for version control and managing lineage. Remote repository is on Google Drive. 
 
 ## [Model Architecture](src/lightgcn.py)
-The model architecture is implemented using PyG LightGCN based on research paper mentioned above. Some features are adjusted and added to form the customized model architecture to fulfill the needs of this project.
-1. Support `edgeWeight` feature in the model architecture.
-2. Recommend K items for given users
-3. Compute `MARK`(Mean Avg. Recall @ K) and `MAPK`(Mean Avg. Precision @ K)
-4. Fix `BPR_loss` bug.
+Model architecture is LightGCN, based on research paper mentioned above.
 
-## [Train and save the best model](src/train_lightgcn.py)
+<img alt="LightGCN" src="doc/LightGCN.jpg" width="800"/>
 
-### [Prepare train/val/test dataset](src/utils_v2.py) for training and testing
+## Evaluation Metric
+Mean Average Recall@K(MARK) is the evaluation metric.
 
-The model performance is evaluated by `MARK`. To hold the ground_truth for evaluation purpose, I split the whole dataset into train/ val/ test. Sync up `users`, `items` nodes in three dataset(`users`, `items` nodes that only exist in val/ test set are not usable for evaluation).
+## [Training Algorithm](src/train_lightgcn.py)
 
-### Model Training
+The whole dataset is split into train/ val/ test. [Prepare train/val/test dataset](src/utils_v2.py)
 
-The model is trained in mini-batch fashion to optimize the BPR-loss. Each mini-batch contains `batch_size` (user : positive_item : negative_item) pairs which serves `BPR-loss` calculation.
+Loss function is BPR Loss:
 
-?? Training the model with dataset mentioned above costs about 24 hours. The model can be iteratively re-trained and re-deployed periodically. ??
+<img alt="BPR_Loss" src="doc/BPRLoss.jpg" width="500"/>
 
-**Tunable hyper parameters** are: `n_layers`, `latent_dimension`, `learning_rate`
+It takes the embeddings of a user node, a positive item node and a negative item node to calculate the relative score, with the objective of minimizing the distance between user and positive item and maximizing the distance between user and the negative item.
+
+Mini-batches are created by random sampling from the training set (user, positive item, negative item) tuples.
+
+
+A GPU with 24GB of memory is required. It takes about 24 hours to train the model. 
+
+**Tunable hyper parameters**: 
+number of LGConv layers (3, 4, 5), 
+dimension of node embeddings (64, 80, 90)
+learning rate
 
 ### Save best model
 The training process keeps track of best model and related metadata. Saves the best model and its metadata in [directory](model-checkpoints/).
@@ -73,14 +71,26 @@ The inference process loads saved best model and its metadata, recommend topK pr
 
 Persisted inference result can be plot out: [Result explainability](notebooks/plot_inference_result.ipynb), [Plot utils](src/plot.py)
 
-## MLE software architecture
+## MLE Software Architecture
 
-[MLOps Stack](doc/MLOps%20Stack.jpeg)
-[Product Infrastructure](doc/GNN-eCommerce%20Infrastructure.jpeg)
-[TorchServe](torchserve/lightgcn_handler.py)
+This is the MLOps stack I use. The blue box on the left is the data processing pipeline. At the end of the pipeline is graph representations of the e-commerce events. Branching and versioning of the pipeline code together with the resulting graph is done with Github & DVC.
 
-??? When using this model to serve an online eCommerce application(web or app), ??? mentioned lightgcn_handle.py a little ???
+The green box on the right hand side is the iterative process of model development and experiments. It involves experiments of different model training methodologies and hyperparameters tuning, The trained model are stored and versioned together with the hyperparameters and training log in DVC.
 
+The pink box at the bottom is production deployment. The model is served using TorchServe.
+
+![MLOps Stack](doc/MLOps%20Stack.jpeg)
+
+## Production Infrastructure
+
+When a customer visits a web/ mobile app, an API is called with the customer id sent. 
+The API server forwards the request to TorchServe model server. TorchServe uses the consumer and items embeddings to come up with the highest score items and send them back to the API server.
+
+The customer online events database receives near real time feeds from the ecommerce system via message streaming. This part is not in scope of the project.
+
+The model needs to be retrained regularly so that it is up-to-date with new activities. The auto retraining is also not in scope for this project.
+
+![Product Infrastructure](doc/GNN-eCommerce%20Infrastructure.jpeg)
 
 ## Future Work
 The current model is optimized on the probability of buying. There may be other optimization metric such as revenue, etc. We can try ensemble of models with different optimization metrics.
@@ -91,3 +101,4 @@ Groping events in session is also worth exploring.
 
 
 ## [Project Pitch Slides](doc/GNN-based%20RecSys.pdf)
+
