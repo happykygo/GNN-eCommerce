@@ -49,10 +49,10 @@ def relabelling(train_df, val_df=None, test_df=None):
     le_item = pp.LabelEncoder()
     train_df['user_id_idx'] = le_user.fit_transform(train_df['user_id'].values)
     train_df['item_id_idx'] = le_item.fit_transform(train_df['item_id'].values)
-    if val_df:
+    if val_df is not None:
         val_df['user_id_idx'] = le_user.transform(val_df['user_id'].values)
         val_df['item_id_idx'] = le_item.transform(val_df['item_id'].values)
-    if test_df:
+    if test_df is not None:
         test_df['user_id_idx'] = le_user.transform(test_df['user_id'].values)
         test_df['item_id_idx'] = le_item.transform(test_df['item_id'].values)
 
@@ -68,7 +68,7 @@ def pos_item_list(df):
     :return:
     """
     u_posI_List = df.loc[df['weight'] == 1]
-    u_posI_List = u_posI_List.groupby('user_id_idx')['item_id_idx'].apply(list).reset_index()
+    u_posI_List = u_posI_List.groupby('user_id_idx', group_keys=False)['item_id_idx'].apply(list).reset_index()
     u_posI_List.columns = ['user_id_idx', 'item_id_idx_list']
     return u_posI_List
 
