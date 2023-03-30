@@ -7,3 +7,6 @@ venv/
 notebooks/Archive/
 data/ml-100k/
 /Glance_graph/
+/torchserve/tsvenv/
+/torchserve/model_store/
+/torchserve/logs/

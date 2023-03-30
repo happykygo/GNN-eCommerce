@@ -1,6 +1,4 @@
 torchserve \
-    --model-store . \
-    --models lightgcn_recommender.mar \ 
+    --model-store model_store \
+    --models lightgcn_recommender.mar \
     --start
-
-    

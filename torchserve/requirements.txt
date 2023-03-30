@@ -1,5 +1,11 @@
 pandas
--f https://data.pyg.org/whl/torch-1.13.0+cu117.html
+-f https://data.pyg.org/whl/torch-2.0.0+cu118.html
 torch_geometric
-torch_sparse
+pyg_lib
 torch_scatter
+torch_sparse
+torch_cluster
+torch_spline_conv
+torchserve
+torch-model-archiver
+torch-workflow-archiver
